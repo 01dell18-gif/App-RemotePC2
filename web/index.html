@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FYJ Channel Remote - Web Master Controller</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- TOP NAVIGATION BAR -->
+    <header class="navbar">
+      <div class="nav-left">
+        <div class="brand">
+          <div class="brand-logo">
+            <span class="logo-icon">⚡</span>
+          </div>
+          <div class="brand-text">
+            <h1>FYJ CHANNEL REMOTE</h1>
+            <span class="brand-sub">Cloud & Web Classroom Remote Master</span>
+          </div>
+        </div>
+
+        <div class="channel-selector-wrapper">
+          <label for="channelSelect">CHANNEL:</label>
+          <div class="custom-select">
+            <select id="channelSelect">
+              <option value="LAB-UTAMA">LAB-UTAMA</option>
+              <option value="LAB-DKV-1">LAB-DKV-1</option>
+              <option value="RUANG-KELAS-A">RUANG-KELAS-A</option>
+            </select>
+          </div>
+          <button id="btnAddChannel" class="btn-icon" title="Tambah Channel Baru">+</button>
+        </div>
+      </div>
+
+      <div class="nav-center">
+        <!-- GLOBAL ACTION TOOLBAR WITH MODERN DROPDOWNS -->
+        <div class="action-dropdown-group">
+          
+          <!-- DROPDOWN 1: KONTROL LAYAR -->
+          <div class="dropdown-wrapper" id="dropScreen">
+            <button class="action-btn warning dropdown-trigger" id="btnDropScreen" title="Menu Kontrol Layar">
+              <span class="btn-icon">🖥️</span>
+              <span class="btn-label">Kontrol Layar</span>
+              <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="dropdown-menu">
+              <div class="dropdown-header">Kontrol Tampilan Desktop</div>
+              <button class="dropdown-item" id="itemLockAction">
+                <span class="item-icon">🔒</span>
+                <div class="item-content">
+                  <span class="item-title">Kunci Layar PC</span>
+                  <span class="item-sub">Kunci input dan sembunyikan layar</span>
+                </div>
+              </button>
+              <button class="dropdown-item" id="itemUnlockAction">
+                <span class="item-icon">🔓</span>
+                <div class="item-content">
+                  <span class="item-title">Buka Kunci Layar</span>
+                  <span class="item-sub">Kembalikan akses normal komputer</span>
+                </div>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item" id="itemDemoAction">
+                <span class="item-icon">📡</span>
+                <div class="item-content">
+                  <span class="item-title" id="lblDemoActionTitle">Demo Layar Pengajar</span>
+                  <span class="item-sub">Siarkan layar master ke semua komputer klien</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- DROPDOWN 2: PESAN & WEB -->
+          <div class="dropdown-wrapper" id="dropComm">
+            <button class="action-btn primary dropdown-trigger" id="btnDropComm" title="Menu Pesan & Web">
+              <span class="btn-icon">📢</span>
+              <span class="btn-label">Pesan & Web</span>
+              <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="dropdown-menu">
+              <div class="dropdown-header">Komunikasi & Konten Browser</div>
+              <button class="dropdown-item" id="itemMsgAction">
+                <span class="item-icon">💬</span>
+                <div class="item-content">
+                  <span class="item-title">Kirim Pesan Massal</span>
+                  <span class="item-sub">Tampilkan pesan pop-up pengumuman</span>
+                </div>
+              </button>
+              <button class="dropdown-item" id="itemUrlAction">
+                <span class="item-icon">🌐</span>
+                <div class="item-content">
+                  <span class="item-title">Buka Halaman Web (URL)</span>
+                  <span class="item-sub">Buka link ujian atau materi di browser</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- DROPDOWN 3: SKRIP OTOMASI -->
+          <div class="dropdown-wrapper" id="dropScript">
+            <button class="action-btn info dropdown-trigger" id="btnDropScript" title="Skrip Otomasi & Runner">
+              <span class="btn-icon">📜</span>
+              <span class="btn-label">Skrip Otomasi</span>
+              <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-wide">
+              <div class="dropdown-header">Manajer Skrip Komputer Klien</div>
+              <button class="dropdown-item highlight" id="itemManageScripts">
+                <span class="item-icon">⚙️</span>
+                <div class="item-content">
+                  <span class="item-title">Kelola Skrip (Script Manager)</span>
+                  <span class="item-sub">Daftar skrip, buat baru, edit & terapkan</span>
+                </div>
+              </button>
+              <button class="dropdown-item" id="itemAddNewScript">
+                <span class="item-icon">➕</span>
+                <div class="item-content">
+                  <span class="item-title">Tambah Skrip Baru</span>
+                  <span class="item-sub">Buat skrip PowerShell atau Batch baru</span>
+                </div>
+              </button>
+              <div class="dropdown-divider"></div>
+              <div class="dropdown-section-title">⚡ TERAPKAN SKRIP CEPAT:</div>
+              <div id="quickScriptList" class="quick-script-list">
+                <!-- Diisi otomatis dari database skrip -->
+              </div>
+            </div>
+          </div>
+
+          <!-- DROPDOWN 4: KONTROL DAYA -->
+          <div class="dropdown-wrapper" id="dropPower">
+            <button class="action-btn danger dropdown-trigger" id="btnDropPower" title="Menu Opsi Daya">
+              <span class="btn-icon">⚡</span>
+              <span class="btn-label">Kontrol Daya</span>
+              <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="dropdown-menu">
+              <div class="dropdown-header">Tindakan Daya & Sesi</div>
+              <button class="dropdown-item danger-item" data-power="shutdown">
+                <span class="item-icon">🔴</span>
+                <div class="item-content">
+                  <span class="item-title">Matikan Komputer</span>
+                  <span class="item-sub">Shutdown perangkat dalam 5 detik</span>
+                </div>
+              </button>
+              <button class="dropdown-item warning-item" data-power="restart">
+                <span class="item-icon">🔄</span>
+                <div class="item-content">
+                  <span class="item-title">Restart Komputer</span>
+                  <span class="item-sub">Reboot sistem klien</span>
+                </div>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item" data-power="lock_workstation">
+                <span class="item-icon">🔒</span>
+                <div class="item-content">
+                  <span class="item-title">Kunci Sesi Windows</span>
+                  <span class="item-sub">Lock WorkStation OS</span>
+                </div>
+              </button>
+              <button class="dropdown-item" data-power="logoff">
+                <span class="item-icon">🚪</span>
+                <div class="item-content">
+                  <span class="item-title">Sign Out / Logoff</span>
+                  <span class="item-sub">Keluarkan akun pengguna aktif</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <div class="connection-pill">
+          <span id="connIndicator" class="pulse-dot"></span>
+          <span id="connStatusText">Menghubungkan...</span>
+        </div>
+        <div class="stats-badge">
+          <span id="statAgentCount">0</span> PC Terdeteksi
+        </div>
+      </div>
+    </header>
+
+    <!-- SUBHEADER / FILTER & SELECTION TOOLBAR -->
+    <div class="sub-header">
+      <div class="filter-left">
+        <button id="btnAddNewDevice" class="btn-primary-sm" title="Tambah Perangkat Komputer ke Ruangan">➕ Tambah PC</button>
+        
+        <!-- SELECTION SYSTEM CONTROLS -->
+        <div class="selection-box">
+          <button id="btnSelectAll" class="btn-select" title="Pilih Semua PC di channel">✓ Pilih Semua</button>
+          <button id="btnDeselectAll" class="btn-select" title="Batalkan Semua Pilihan">✕ Batal</button>
+          <span id="selectionCounterBadge" class="selection-badge">0 PC Dipilih</span>
+        </div>
+
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="Cari nama PC, host atau IP...">
+        </div>
+        <div class="view-size-selector">
+          <span class="size-label">Grid:</span>
+          <button class="btn-size" data-size="small">S</button>
+          <button class="btn-size active" data-size="medium">M</button>
+          <button class="btn-size" data-size="large">L</button>
+        </div>
+      </div>
+
+      <div class="channel-info-pill">
+        <span class="channel-tag">Saluran Aktif: <strong id="lblActiveChannel">LAB-UTAMA</strong></span>
+        <span class="lan-ip-hint" id="lblLanInfo">Hubungkan Agent ke ws://&lt;IP-Server&gt;:8081</span>
+      </div>
+    </div>
+
+    <!-- MAIN GRID CONTAINER -->
+    <main class="grid-main">
+      <!-- EMPTY STATE -->
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">📡</div>
+        <h2>Belum Ada Komputer yang Terhubung</h2>
+        <p>Jalankan <code>run_agent.bat</code> atau <code>run_agent_gui.bat</code> pada PC klien dengan Channel <strong id="lblEmptyChannel">LAB-UTAMA</strong>.</p>
+        <div class="guide-box">
+          <h4>Cara Cepat Menghubungkan Klien:</h4>
+          <ol>
+            <li>Buka folder <code>agent/</code> di komputer siswa / klien.</li>
+            <li>Klik ganda <code>run_agent_gui.bat</code>.</li>
+            <li>Masukkan Channel: <strong class="hl">LAB-UTAMA</strong> lalu klik <em>Hubungkan</em>.</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- CLIENT GRID CARDS -->
+      <div id="clientGrid" class="client-grid grid-medium"></div>
+    </main>
+
+    <!-- FULLSCREEN INTERACTIVE REMOTE CONTROLLER OVERLAY -->
+    <div id="remoteOverlay" class="remote-overlay hidden">
+      <div class="remote-hud-header">
+        <div class="hud-left">
+          <button id="btnBackToGrid" class="btn-back">← Kembali ke Grid</button>
+          <div class="remote-target-info">
+            <h3 id="remoteTargetName">PC-01-DESKTOP</h3>
+            <span id="remoteTargetMeta">192.168.1.15 • Windows 11 • 1920x1080</span>
+          </div>
+        </div>
+
+        <!-- SPECIAL WINDOWS KEYBOARD SHORTCUTS -->
+        <div class="hud-center">
+          <div class="shortcut-toolbar">
+            <button class="btn-shortcut" data-shortcut="win" title="Buka Start Menu">[Win]</button>
+            <button class="btn-shortcut" data-shortcut="win_d" title="Tampilkan Desktop (Win+D)">[Win+D]</button>
+            <button class="btn-shortcut" data-shortcut="alt_tab" title="Ganti Aplikasi (Alt+Tab)">[Alt+Tab]</button>
+            <button class="btn-shortcut" data-shortcut="ctrl_shift_esc" title="Task Manager (Ctrl+Shift+Esc)">[TaskMgr]</button>
+            <button id="btnToggleInputMode" class="btn-mode active" title="Mode Interaksi">🎮 Kontrol Penuh</button>
+          </div>
+        </div>
+
+        <div class="hud-right">
+          <div class="perf-metric">
+            <span class="metric-label">FPS:</span>
+            <span id="remoteFps" class="metric-val">--</span>
+          </div>
+          <div class="perf-metric">
+            <span class="metric-label">Latensi:</span>
+            <span id="remoteLatency" class="metric-val">-- ms</span>
+          </div>
+          <button id="btnToggleFullscreen" class="btn-icon-hud" title="Layar Penuh">⛶</button>
+          <button id="btnCloseRemote" class="btn-close-hud" title="Tutup Remote">✕</button>
+        </div>
+      </div>
+
+      <!-- CANVAS STREAM AREA -->
+      <div class="canvas-container" id="canvasContainer">
+        <canvas id="remoteCanvas"></canvas>
+        <div id="remoteLoading" class="remote-loading hidden">
+          <div class="spinner"></div>
+          <span>Memulai Stream Resolusi Penuh...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL POPUP: KIRIM PESAN -->
+    <div id="modalMsg" class="modal-backdrop hidden">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>📢 Kirim Pesan Pop-up ke Klien</h3>
+          <button class="modal-close" data-close="modalMsg">✕</button>
+        </div>
+        <div class="modal-body">
+          <label>Target Pengiriman:</label>
+          <input type="text" id="msgTarget" readonly class="input-readonly">
+          <label>Judul Pesan:</label>
+          <input type="text" id="msgTitle" placeholder="Misal: Perhatian Seluruh Siswa" value="Pemberitahuan Pengawas">
+          <label>Isi Pesan:</label>
+          <textarea id="msgBody" rows="4" placeholder="Tuliskan instruksi atau pengumuman di sini..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" data-close="modalMsg">Batal</button>
+          <button id="btnSendMsgConfirm" class="btn-primary">Kirim Pesan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL POPUP: BUKA WEB / URL -->
+    <div id="modalUrl" class="modal-backdrop hidden">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>🌐 Buka Halaman Web di Klien</h3>
+          <button class="modal-close" data-close="modalUrl">✕</button>
+        </div>
+        <div class="modal-body">
+          <label>Target Komputer:</label>
+          <input type="text" id="urlTargetDesc" readonly class="input-readonly" value="Semua PC / PC Terpilih">
+          <label>URL / Link Materi / Web Ujian:</label>
+          <input type="url" id="urlInput" placeholder="https://ujian.sekolah.sch.id atau https://google.com" value="https://google.com">
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" data-close="modalUrl">Batal</button>
+          <button id="btnPushUrlConfirm" class="btn-primary">Buka Web Sekarang</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL POPUP: TAMBAH CHANNEL -->
+    <div id="modalAddChannel" class="modal-backdrop hidden">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>➕ Buat Channel / Ruangan Baru</h3>
+          <button class="modal-close" data-close="modalAddChannel">✕</button>
+        </div>
+        <div class="modal-body">
+          <label>Nama Channel (Huruf Kapital, Contoh: LAB-MULTIMEDIA-2):</label>
+          <input type="text" id="newChannelInput" placeholder="NAMA-CHANNEL">
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" data-close="modalAddChannel">Batal</button>
+          <button id="btnSaveNewChannel" class="btn-primary">Simpan Channel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL POPUP: EDIT DETAIL PERANGKAT (HOST NAME, IP, MAC ADDRESS) & HAPUS -->
+    <div id="modalEditDevice" class="modal-backdrop hidden">
+      <div class="modal-box modal-lg">
+        <div class="modal-header">
+          <h3>⚙️ Edit Data Perangkat & Jaringan</h3>
+          <button class="modal-close" data-close="modalEditDevice">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-desc">Sesuaikan nama alias, Host Name, alamat IP, dan MAC Address perangkat ini untuk kemudahan identifikasi inventaris dan manajemen lab.</p>
+          
+          <input type="hidden" id="editAgentId">
+
+          <div class="form-row">
+            <div class="form-col">
+              <label>Nama Tampilan / Alias:</label>
+              <input type="text" id="editName" placeholder="Contoh: PC F atau PC Siswa 01">
+            </div>
+            <div class="form-col">
+              <label>Host Name Komputer:</label>
+              <input type="text" id="editHostname" placeholder="Contoh: AdminKomDKVf">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-col">
+              <label>Alamat IP (IPv4):</label>
+              <input type="text" id="editIp" placeholder="Contoh: 10.10.10.159">
+            </div>
+            <div class="form-col">
+              <label>MAC Address:</label>
+              <input type="text" id="editMac" placeholder="Contoh: 9C:5C:8E:85:0A:D8">
+            </div>
+          </div>
+
+          <label>Lokasi / Catatan Meja:</label>
+          <input type="text" id="editNotes" placeholder="Contoh: Baris Depan Meja 1">
+        </div>
+        <div class="modal-footer modal-footer-split">
+          <button id="btnDeleteDeviceModal" class="btn-danger-outline" title="Hapus komputer ini dari daftar inventaris">🗑️ Hapus Perangkat</button>
+          <div class="modal-footer-right">
+            <button class="btn-secondary" data-close="modalEditDevice">Batal</button>
+            <button id="btnSaveDeviceEdit" class="btn-primary">💾 Simpan Perubahan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL POPUP: DAFTAR & KELOLA SKRIP OTOMASI (SCRIPT MANAGER) -->
+    <div id="modalScripts" class="modal-backdrop hidden">
+      <div class="modal-box modal-xl">
+        <div class="modal-header">
+          <div class="modal-header-title">
+            <h3>📜 Manajer Skrip Otomasi PC Klien</h3>
+            <span class="modal-badge-info" id="scriptsTargetDesc">Target: Semua PC / PC Terpilih</span>
+          </div>
+          <button class="modal-close" data-close="modalScripts">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="scripts-toolbar">
+            <button id="btnOpenNewScriptModal" class="btn-primary-action">
+              <span class="btn-plus-icon">+</span> New Script
+            </button>
+            <div class="scripts-search-wrapper">
+              <span class="search-ico">🔍</span>
+              <input type="text" id="scriptSearchInput" placeholder="Cari skrip berdasarkan nama, bahasa, tipe...">
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="scripts-table">
+              <thead>
+                <tr>
+                  <th class="col-name">Name</th>
+                  <th class="col-desc">Description</th>
+                  <th class="col-platform">Platform</th>
+                  <th class="col-lang">Language</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="scriptsTableBody">
+                <!-- Diisi dari API /api/scripts -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" data-close="modalScripts">Tutup</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL POPUP: BUAT / EDIT SKRIP -->
+    <div id="modalEditScript" class="modal-backdrop hidden">
+      <div class="modal-box modal-lg">
+        <div class="modal-header">
+          <h3 id="modalEditScriptTitle">📝 Buat Skrip Baru</h3>
+          <button class="modal-close" data-close="modalEditScript">✕</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="scriptFormId">
+
+          <label>Nama Skrip:</label>
+          <input type="text" id="scriptFormName" placeholder="Contoh: 1. Buka & Auto-RUN Standar (tanpa Kamera)">
+
+          <label>Deskripsi Skrip:</label>
+          <input type="text" id="scriptFormDesc" placeholder="Jelaskan fungsi skrip ini...">
+
+          <div class="form-row">
+            <div class="form-col">
+              <label>Platform:</label>
+              <select id="scriptFormPlatform" class="form-select-dark">
+                <option value="Windows">Windows</option>
+                <option value="Linux">Linux</option>
+                <option value="macOS">macOS</option>
+              </select>
+            </div>
+            <div class="form-col">
+              <label>Bahasa / Runner:</label>
+              <select id="scriptFormLang" class="form-select-dark">
+                <option value="PowerShell">PowerShell</option>
+                <option value="Batch">Batch CMD</option>
+                <option value="Python">Python</option>
+              </select>
+            </div>
+            <div class="form-col">
+              <label>Tipe Skrip:</label>
+              <select id="scriptFormType" class="form-select-dark">
+                <option value="Custom">Custom</option>
+                <option value="Exam">Exam / Ujian</option>
+                <option value="Utility">Utility</option>
+                <option value="Diagnostic">Diagnostic</option>
+              </select>
+            </div>
+          </div>
+
+          <label>Isi Perintah / Skrip Kode:</label>
+          <div class="code-editor-box">
+            <textarea id="scriptFormCode" rows="8" spellcheck="false" placeholder="Tuliskan perintah PowerShell atau CMD di sini..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" data-close="modalEditScript">Batal</button>
+          <button id="btnSaveScriptConfirm" class="btn-primary">💾 Simpan Skrip</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL POPUP: OUTPUT EKSEKUSI SKRIP (TERMINAL CONSOLE) -->
+    <div id="modalScriptOutput" class="modal-backdrop hidden">
+      <div class="modal-box modal-lg">
+        <div class="modal-header">
+          <h3>⚡ Hasil Eksekusi Skrip (Terminal Output)</h3>
+          <button class="modal-close" data-close="modalScriptOutput">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="output-meta-row">
+            <span class="output-tag" id="outScriptTitle">Skrip: --</span>
+            <span class="output-tag" id="outTargetDesc">Target: --</span>
+            <span class="output-tag status-pill" id="outStatusPill">Menjalankan...</span>
+          </div>
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="terminal-title">PowerShell / Command Output</span>
+              <button id="btnCopyTerminal" class="btn-copy-term" title="Salin Output">📋 Salin</button>
+            </div>
+            <pre id="terminalLogs" class="terminal-body">Menunggu respons dari target PC klien...</pre>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" data-close="modalScriptOutput">Tutup</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toastContainer" class="toast-container"></div>
+  </div>
+
+  <script src="js/remote.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

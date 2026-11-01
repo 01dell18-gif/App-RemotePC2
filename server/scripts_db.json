@@ -1,0 +1,47 @@
+[
+  {
+    "id": "script_1",
+    "name": "1. Buka & Auto-RUN Standar (tanpa Kamera)",
+    "description": "Menjalankan ExamBrowser standar untuk ujian ANBK/CBT",
+    "platform": "Windows",
+    "language": "PowerShell",
+    "type": "Custom",
+    "code": "Start-Process \"C:\\ExamBrowser\\ExamBrowser.exe\" -ErrorAction SilentlyContinue\nWrite-Output \"ExamBrowser Standar dijalankan.\""
+  },
+  {
+    "id": "script_2",
+    "name": "2. Tutup Aman ExamBrowser (Ctrl+C+B)",
+    "description": "Menutup aplikasi ujian ExamBrowser secara aman",
+    "platform": "Windows",
+    "language": "PowerShell",
+    "type": "Custom",
+    "code": "Stop-Process -Name ExamBrowser, ExamBrowserAdmin, exambrowser -Force -ErrorAction SilentlyContinue\nWrite-Output \"ExamBrowser berhasil ditutup.\""
+  },
+  {
+    "id": "script_3",
+    "name": "3. Buka & Auto-RUN Kamera Aktif",
+    "description": "Menjalankan aplikasi ujian dengan proctoring kamera aktif",
+    "platform": "Windows",
+    "language": "PowerShell",
+    "type": "Custom",
+    "code": "Start-Process \"C:\\ExamBrowser\\ExamBrowser.exe\" -ArgumentList \"--enable-camera\" -ErrorAction SilentlyContinue\nWrite-Output \"ExamBrowser Kamera Aktif dijalankan.\""
+  },
+  {
+    "id": "script_4",
+    "name": "4. Bersihkan Cache & Temp File",
+    "description": "Membersihkan file sementara, cache Windows, dan Recycle Bin",
+    "platform": "Windows",
+    "language": "PowerShell",
+    "type": "Utility",
+    "code": "Clear-RecycleBin -Force -ErrorAction SilentlyContinue\nRemove-Item \"$env:TEMP\\*\" -Recurse -Force -ErrorAction SilentlyContinue\nWrite-Output \"File sampah & cache berhasil dibersihkan.\""
+  },
+  {
+    "id": "script_5",
+    "name": "5. Tes Latensi & Koneksi Internet Lab",
+    "description": "Melakukan uji ping ke DNS Google untuk cek kestabilan koneksi",
+    "platform": "Windows",
+    "language": "PowerShell",
+    "type": "Diagnostic",
+    "code": "Test-Connection -ComputerName 8.8.8.8 -Count 4 | Select-Object Address, ResponseTime"
+  }
+]
