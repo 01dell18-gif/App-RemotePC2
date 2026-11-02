@@ -13,6 +13,7 @@ import time
 import socket
 import asyncio
 import threading
+import subprocess
 import http.server
 import urllib.parse
 from typing import Dict, Set
@@ -149,18 +150,38 @@ channel_mgr = ChannelManager()
 main_event_loop = None
 
 def get_local_ips():
-    ips = ["127.0.0.1"]
+    ips = []
+    # 1. Cari IP rute LAN utama yang terhubung ke jaringan aktif
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        main_lan_ip = s.getsockname()[0]
+        s.close()
+        if main_lan_ip and not main_lan_ip.startswith("127."):
+            ips.append(main_lan_ip)
+    except Exception:
+        pass
+
+    # 2. Tambahkan localhost loopback
+    if "127.0.0.1" not in ips:
+        ips.append("127.0.0.1")
+
+    # 3. Cari IP interface jaringan lainnya (hindari duplikat)
     try:
         hostname = socket.gethostname()
         for ip in socket.gethostbyname_ex(hostname)[2]:
             if not ip.startswith("127.") and ip not in ips:
-                ips.append(ip)
+                # Prioritaskan IP non-VirtualBox di depan VirtualBox
+                if not ip.startswith("192.168.56."):
+                    ips.insert(1 if len(ips) > 1 else 0, ip)
+                else:
+                    ips.append(ip)
     except Exception:
         pass
     return ips
 
 # --- PING & NETWORK REACHABILITY CHECKER ---
-def check_host_ping(ip: str, timeout_ms: int = 800) -> dict:
+def check_host_ping(ip: str, timeout_ms: int = 1000) -> dict:
     if not ip or ip.strip() == "":
         return {"alive": False, "latency_ms": 0, "status": "IP Kosong", "is_local": False}
     
@@ -174,20 +195,41 @@ def check_host_ping(ip: str, timeout_ms: int = 800) -> dict:
             cmd = ["ping", "-n", "1", "-w", str(timeout_ms), ip]
         else:
             cmd = ["ping", "-c", "1", "-W", "1", ip]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
-        alive = (res.returncode == 0) and ("TTL=" in res.stdout.upper() or "REPLY FROM" in res.stdout.upper() or "BALASAN DARI" in res.stdout.upper())
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        stdout_upper = res.stdout.upper()
+
+        # Pastikan tidak ada pesan host unreachable atau timeout
+        has_error = (
+            "DESTINATION HOST UNREACHABLE" in stdout_upper or
+            "UNREACHABLE" in stdout_upper or
+            "REQUEST TIMED OUT" in stdout_upper or
+            "RTO" in stdout_upper or
+            "100% LOSS" in stdout_upper or
+            "100% HILANG" in stdout_upper
+        )
+
+        has_reply = (
+            "TTL=" in stdout_upper or
+            "REPLY FROM" in stdout_upper or
+            "BALASAN DARI" in stdout_upper
+        )
+
+        alive = (res.returncode == 0) and has_reply and (not has_error)
         latency = 1
+
         if alive:
             for part in res.stdout.split():
-                if "time=" in part.lower() or "waktu=" in part.lower():
+                clean_p = part.lower().replace("ms", "").replace("<", "=")
+                if "time=" in clean_p or "waktu=" in clean_p:
                     try:
-                        num = part.lower().split("=")[-1].replace("ms", "").replace("<", "").strip()
+                        num = clean_p.split("=")[-1].strip()
                         latency = max(1, int(num))
                     except Exception:
                         pass
             return {"alive": True, "latency_ms": latency, "status": f"Terhubung ({latency} ms)", "is_local": False}
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[!] Error saat ping {ip}: {e}")
+
     return {"alive": False, "latency_ms": 0, "status": "Tidak Merespons (Offline)", "is_local": False}
 
 def send_wake_on_lan(mac: str) -> bool:
@@ -949,12 +991,61 @@ async def ws_handler(websocket):
     else:
         await websocket.close(1008, "Role parameter missing (role=master or role=agent)")
 
+def start_udp_beacon_service():
+    """Layanan beacon UDP untuk memudahkan agen klien di LAN mendeteksi server master secara otomatis."""
+    def _beacon_loop():
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        try:
+            sock.bind(("", 8889))
+        except Exception:
+            pass
+        sock.settimeout(2.0)
+
+        while True:
+            try:
+                ips = get_local_ips()
+                primary_ip = next((ip for ip in ips if ip != "127.0.0.1"), "127.0.0.1")
+                beacon_data = json.dumps({
+                    "type": "FYJ_BEACON",
+                    "server_ip": primary_ip,
+                    "http_port": HTTP_PORT,
+                    "ws_port": WS_PORT,
+                    "channel": "LAB-UTAMA"
+                }).encode("utf-8")
+
+                sock.sendto(beacon_data, ("255.255.255.255", 8889))
+
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    req = json.loads(data.decode("utf-8", errors="ignore"))
+                    if req.get("type") == "DISCOVER_MASTER":
+                        reply = json.dumps({
+                            "type": "MASTER_REPLY",
+                            "server_ip": primary_ip,
+                            "http_port": HTTP_PORT,
+                            "ws_port": WS_PORT,
+                            "channel": "LAB-UTAMA"
+                        }).encode("utf-8")
+                        sock.sendto(reply, addr)
+                except socket.timeout:
+                    pass
+            except Exception:
+                time.sleep(2)
+            time.sleep(2.0)
+
+    threading.Thread(target=_beacon_loop, daemon=True).start()
+
 async def main():
     global main_event_loop
     main_event_loop = asyncio.get_running_loop()
 
     http_thread = threading.Thread(target=start_http_server, daemon=True)
     http_thread.start()
+
+    # Aktifkan UDP Beacon Service untuk auto-discovery klien LAN
+    start_udp_beacon_service()
 
     # Otomatis aktifkan Local Client Agent di PC ini sehingga langsung online
     ensure_local_agent_running()

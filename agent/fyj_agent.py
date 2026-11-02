@@ -362,6 +362,32 @@ def get_active_window_title() -> str:
             pass
     return ""
 
+def discover_master_server(timeout=1.2) -> Optional[str]:
+    """Mencari Server Master FYJ di LAN melalui UDP broadcast probe."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(timeout)
+        probe = json.dumps({"type": "DISCOVER_MASTER"}).encode("utf-8")
+        sock.sendto(probe, ("255.255.255.255", 8889))
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                data, addr = sock.recvfrom(2048)
+                msg = json.loads(data.decode("utf-8", errors="ignore"))
+                if msg.get("type") in ("FYJ_BEACON", "MASTER_REPLY"):
+                    srv_ip = msg.get("server_ip") or addr[0]
+                    ws_p = msg.get("ws_port", 8081)
+                    sock.close()
+                    return f"ws://{srv_ip}:{ws_p}"
+            except socket.timeout:
+                break
+        sock.close()
+    except Exception:
+        pass
+    return None
+
 # --- AGENT CLIENT LOGIC ---
 class FYJClientAgent:
     def __init__(self, server_url: str, channel: str, agent_name: str):
@@ -378,6 +404,25 @@ class FYJClientAgent:
         self.loop = None
 
     async def connect_and_run(self):
+        # Jika server diarahkan ke localhost tapi server lokal tidak ada, cari Master di LAN
+        if "127.0.0.1" in self.server_url or "localhost" in self.server_url:
+            is_local_alive = False
+            try:
+                test_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                test_s.settimeout(0.3)
+                test_s.connect(("127.0.0.1", 8081))
+                test_s.close()
+                is_local_alive = True
+            except Exception:
+                is_local_alive = False
+
+            if not is_local_alive:
+                print("[*] Mencari Server Master FYJ di jaringan LAN...")
+                discovered = discover_master_server()
+                if discovered:
+                    self.server_url = discovered
+                    print(f"[+] Ditemukan Server Master di LAN: {self.server_url}")
+
         ws_url = f"{self.server_url}?role=agent&channel={self.channel}&id={self.agent_id}&name={self.agent_name}"
         print(f"[*] Menghubungkan ke Server FYJ: {ws_url}")
         print(f"[*] Info Perangkat: Host={socket.gethostname()} | IP={self.local_ip} | MAC={self.mac}")

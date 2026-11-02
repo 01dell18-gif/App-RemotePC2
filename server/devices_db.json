@@ -1,10 +1,29 @@
 {
   "pc_9C5C8E850AD8": {
-    "name": "PC F",
+    "name": "PC F (Master)",
     "hostname": "AdminKomDKVf",
-    "ip": "10.10.10.155",
+    "ip": "10.10.10.159",
     "mac": "9C:5C:8E:85:0A:D8",
+    "notes": "Komputer Master / Server",
+    "channel": "LAB-UTAMA",
+    "status": "online"
+  },
+  "pc_9C5C8E70C187": {
+    "name": "PC Bam",
+    "hostname": "AdminKomDKVBam",
+    "ip": "10.10.10.155",
+    "mac": "9C-5C-8E-70-C1-87",
     "notes": "Baris Depan Meja 1",
-    "channel": "LAB-UTAMA"
+    "channel": "LAB-UTAMA",
+    "status": "online"
+  },
+  "pc_B42E99B92692": {
+    "channel": "LAB-UTAMA",
+    "name": "PC Lab2",
+    "hostname": "AdminLab2DKV",
+    "ip": "10.10.10.251",
+    "mac": "B4:2E:99:B9:26:92",
+    "notes": "Lab2",
+    "status": "offline"
   }
 }

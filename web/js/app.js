@@ -328,7 +328,7 @@ class FYJMasterApp {
               </button>
             </div>
           </div>
-        ` : `
+        ` : (agent.last_frame ? `
           <img id="thumb-${agent.id}" src="${thumbSrc}" alt="${agent.name}">
           ${agent.is_locked ? '<div class="lock-banner">🔒 TERKUNCI</div>' : ''}
           <div class="screen-hover-overlay">
@@ -336,7 +336,18 @@ class FYJMasterApp {
               🕹️ Kendalikan
             </button>
           </div>
-        `}
+        ` : `
+          <div class="online-waiting-stream">
+            <span class="online-stream-icon">🖥️</span>
+            <span class="online-stream-title">${agent.name} Online di Jaringan</span>
+            <span class="online-stream-ip">IP: <code>${agent.ip}</code> (Ping Responsif)</span>
+            <div class="offline-actions-btn-group" style="margin-top: 10px;">
+              <button class="btn-card-control" data-action="control" data-id="${agent.id}">
+                🕹️ Buka Layar Remote
+              </button>
+            </div>
+          </div>
+        `)}
       </div>
 
       <div class="card-footer">
