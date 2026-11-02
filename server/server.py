@@ -159,6 +159,72 @@ def get_local_ips():
         pass
     return ips
 
+# --- PING & NETWORK REACHABILITY CHECKER ---
+def check_host_ping(ip: str, timeout_ms: int = 800) -> dict:
+    if not ip or ip.strip() == "":
+        return {"alive": False, "latency_ms": 0, "status": "IP Kosong", "is_local": False}
+    
+    ip = ip.strip()
+    local_ips = get_local_ips()
+    if ip in local_ips or ip in ("127.0.0.1", "localhost"):
+        return {"alive": True, "latency_ms": 1, "status": "Online (Host Lokal)", "is_local": True}
+
+    try:
+        if sys.platform == "win32":
+            cmd = ["ping", "-n", "1", "-w", str(timeout_ms), ip]
+        else:
+            cmd = ["ping", "-c", "1", "-W", "1", ip]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+        alive = (res.returncode == 0) and ("TTL=" in res.stdout.upper() or "REPLY FROM" in res.stdout.upper() or "BALASAN DARI" in res.stdout.upper())
+        latency = 1
+        if alive:
+            for part in res.stdout.split():
+                if "time=" in part.lower() or "waktu=" in part.lower():
+                    try:
+                        num = part.lower().split("=")[-1].replace("ms", "").replace("<", "").strip()
+                        latency = max(1, int(num))
+                    except Exception:
+                        pass
+            return {"alive": True, "latency_ms": latency, "status": f"Terhubung ({latency} ms)", "is_local": False}
+    except Exception:
+        pass
+    return {"alive": False, "latency_ms": 0, "status": "Tidak Merespons (Offline)", "is_local": False}
+
+def send_wake_on_lan(mac: str) -> bool:
+    try:
+        clean_mac = (mac or "").replace(":", "").replace("-", "").strip()
+        if len(clean_mac) == 12:
+            data = bytes.fromhex("FFFFFFFFFFFF" + clean_mac * 16)
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            s.sendto(data, ("255.255.255.255", 9))
+            s.close()
+            return True
+    except Exception:
+        pass
+    return False
+
+local_agent_proc = None
+
+def ensure_local_agent_running():
+    global local_agent_proc
+    if local_agent_proc is not None and local_agent_proc.poll() is None:
+        return
+    agent_path = os.path.abspath(os.path.join(BASE_DIR, "..", "agent", "fyj_agent.py"))
+    if os.path.exists(agent_path):
+        try:
+            kwargs = {}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            local_agent_proc = subprocess.Popen(
+                [sys.executable, "-u", agent_path, "--channel", "LAB-UTAMA"],
+                cwd=os.path.dirname(agent_path),
+                **kwargs
+            )
+            print("[+] Local Agent background service otomatis aktif untuk PC ini!")
+        except Exception as e:
+            print(f"[!] Gagal memulai local agent otomatis: {e}")
+
 # --- HTTP Server untuk Web Master UI & REST API ---
 class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -230,6 +296,115 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": True, "channel": ch_name}).encode("utf-8"))
                 return
 
+        elif parsed.path == "/api/devices/check":
+            ip = payload.get("ip", "").strip()
+            mac = payload.get("mac", "").strip()
+            if mac:
+                send_wake_on_lan(mac)
+            ping_res = check_host_ping(ip)
+            if ping_res.get("is_local"):
+                ensure_local_agent_running()
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True, "ping": ping_res}).encode("utf-8"))
+            return
+
+        elif parsed.path == "/api/devices/connect":
+            agent_id = payload.get("agent_id")
+            channel_name = payload.get("channel", "LAB-UTAMA")
+            ip = payload.get("ip", "").strip()
+            mac = payload.get("mac", "").strip()
+
+            if not ip and agent_id in devices_db:
+                ip = devices_db[agent_id].get("ip", "")
+            if not mac and agent_id in devices_db:
+                mac = devices_db[agent_id].get("mac", "")
+
+            if mac:
+                send_wake_on_lan(mac)
+            ping_res = check_host_ping(ip)
+
+            if ping_res.get("is_local"):
+                ensure_local_agent_running()
+
+            # Perbarui status di devices_db
+            if agent_id in devices_db:
+                devices_db[agent_id]["status"] = "online" if ping_res.get("alive") else "offline"
+                save_devices_db(devices_db)
+
+            # Beritahu semua master
+            dev_info = {
+                "id": agent_id,
+                "name": devices_db.get(agent_id, {}).get("name", "Komputer"),
+                "hostname": devices_db.get(agent_id, {}).get("hostname", ""),
+                "ip": ip or "127.0.0.1",
+                "mac": mac or "00:00:00:00:00:00",
+                "notes": devices_db.get(agent_id, {}).get("notes", ""),
+                "status": "online" if ping_res.get("alive") else "offline",
+                "channel": channel_name,
+                "cpu": 0, "ram": 0, "is_locked": False
+            }
+            if main_event_loop and not main_event_loop.is_closed():
+                asyncio.run_coroutine_threadsafe(
+                    notify_masters(channel_name, {"type": "agent_updated", "agent": dev_info}),
+                    main_event_loop
+                )
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "success": True,
+                "connected": ping_res.get("alive", False),
+                "ping": ping_res,
+                "device": dev_info
+            }).encode("utf-8"))
+            return
+
+        elif parsed.path == "/api/devices/disconnect":
+            agent_id = payload.get("agent_id")
+            channel_name = payload.get("channel", "LAB-UTAMA")
+
+            # Jika agent aktif terhubung via WebSocket, putuskan
+            ch = channel_mgr.get_or_create_channel(channel_name)
+            if agent_id in ch["agents"]:
+                ag_ws = ch["agents"][agent_id]["ws"]
+                if main_event_loop and not main_event_loop.is_closed():
+                    asyncio.run_coroutine_threadsafe(ag_ws.close(), main_event_loop)
+                del ch["agents"][agent_id]
+
+            if agent_id in devices_db:
+                devices_db[agent_id]["status"] = "offline"
+                save_devices_db(devices_db)
+
+            dev_info = {
+                "id": agent_id,
+                "name": devices_db.get(agent_id, {}).get("name", "Komputer"),
+                "hostname": devices_db.get(agent_id, {}).get("hostname", ""),
+                "ip": devices_db.get(agent_id, {}).get("ip", "127.0.0.1"),
+                "mac": devices_db.get(agent_id, {}).get("mac", "00:00:00:00:00:00"),
+                "notes": devices_db.get(agent_id, {}).get("notes", ""),
+                "status": "offline",
+                "channel": channel_name,
+                "cpu": 0, "ram": 0, "is_locked": False
+            }
+            if main_event_loop and not main_event_loop.is_closed():
+                asyncio.run_coroutine_threadsafe(
+                    notify_masters(channel_name, {"type": "agent_updated", "agent": dev_info}),
+                    main_event_loop
+                )
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True, "status": "offline", "device": dev_info}).encode("utf-8"))
+            return
+
         elif parsed.path == "/api/devices/update":
             agent_id = payload.get("agent_id")
             if not agent_id:
@@ -244,6 +419,18 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     devices_db[agent_id][k] = payload[k]
             save_devices_db(devices_db)
 
+            dev_ip = payload.get("ip") or devices_db[agent_id].get("ip", "")
+            dev_mac = payload.get("mac") or devices_db[agent_id].get("mac", "")
+            
+            # Cek koneksi secara otomatis seketika data disimpan
+            if dev_mac:
+                send_wake_on_lan(dev_mac)
+            ping_res = check_host_ping(dev_ip)
+            if ping_res.get("is_local"):
+                ensure_local_agent_running()
+
+            is_alive = ping_res.get("alive", False)
+
             # Update active agent jika online
             matched = False
             for ch in channel_mgr.channels.values():
@@ -252,6 +439,7 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     for k in ["name", "hostname", "ip", "mac", "notes"]:
                         if k in payload:
                             ag[k] = payload[k]
+                    ag["status"] = "online"
                     matched = True
                     if main_event_loop and not main_event_loop.is_closed():
                         asyncio.run_coroutine_threadsafe(
@@ -260,6 +448,7 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         )
 
             if not matched:
+                auto_status = "online" if is_alive else "offline"
                 offline_info = {
                     "id": agent_id,
                     "name": devices_db[agent_id].get("name", "Komputer"),
@@ -267,7 +456,7 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "ip": devices_db[agent_id].get("ip", "127.0.0.1"),
                     "mac": devices_db[agent_id].get("mac", "00:00:00:00:00:00"),
                     "notes": devices_db[agent_id].get("notes", ""),
-                    "status": "offline",
+                    "status": auto_status,
                     "channel": channel_name,
                     "cpu": 0, "ram": 0, "is_locked": False
                 }
@@ -281,7 +470,13 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "agent_id": agent_id, "device": devices_db[agent_id]}).encode("utf-8"))
+            self.wfile.write(json.dumps({
+                "success": True,
+                "agent_id": agent_id,
+                "device": devices_db[agent_id],
+                "ping": ping_res,
+                "auto_connected": is_alive
+            }).encode("utf-8"))
             return
 
         elif parsed.path == "/api/devices/delete":
@@ -469,6 +664,63 @@ async def ws_handler(websocket):
                                 del devices_db[db_k]
                                 save_devices_db(devices_db)
                         await notify_masters(channel_id, {"type": "device_deleted", "agent_id": agent_id})
+
+                elif msg_type == "connect_device":
+                    agent_id = data.get("agent_id")
+                    target_ip = data.get("ip")
+                    target_mac = data.get("mac")
+                    if not target_ip and agent_id in devices_db:
+                        target_ip = devices_db[agent_id].get("ip", "")
+                    if not target_mac and agent_id in devices_db:
+                        target_mac = devices_db[agent_id].get("mac", "")
+                    
+                    if target_mac:
+                        send_wake_on_lan(target_mac)
+                    ping_res = check_host_ping(target_ip)
+                    if ping_res.get("is_local"):
+                        ensure_local_agent_running()
+
+                    new_status = "online" if ping_res.get("alive") else "offline"
+                    if agent_id in devices_db:
+                        devices_db[agent_id]["status"] = new_status
+                        save_devices_db(devices_db)
+
+                    dev_info = {
+                        "id": agent_id,
+                        "name": devices_db.get(agent_id, {}).get("name", "Komputer"),
+                        "hostname": devices_db.get(agent_id, {}).get("hostname", ""),
+                        "ip": target_ip or "127.0.0.1",
+                        "mac": target_mac or "00:00:00:00:00:00",
+                        "notes": devices_db.get(agent_id, {}).get("notes", ""),
+                        "status": new_status,
+                        "channel": channel_id,
+                        "cpu": 0, "ram": 0, "is_locked": False
+                    }
+                    await notify_masters(channel_id, {"type": "agent_updated", "agent": dev_info})
+
+                elif msg_type == "disconnect_device":
+                    agent_id = data.get("agent_id")
+                    if agent_id in ch["agents"]:
+                        try:
+                            await ch["agents"][agent_id]["ws"].close()
+                        except Exception:
+                            pass
+                        del ch["agents"][agent_id]
+                    if agent_id in devices_db:
+                        devices_db[agent_id]["status"] = "offline"
+                        save_devices_db(devices_db)
+                    dev_info = {
+                        "id": agent_id,
+                        "name": devices_db.get(agent_id, {}).get("name", "Komputer"),
+                        "hostname": devices_db.get(agent_id, {}).get("hostname", ""),
+                        "ip": devices_db.get(agent_id, {}).get("ip", "127.0.0.1"),
+                        "mac": devices_db.get(agent_id, {}).get("mac", "00:00:00:00:00:00"),
+                        "notes": devices_db.get(agent_id, {}).get("notes", ""),
+                        "status": "offline",
+                        "channel": channel_id,
+                        "cpu": 0, "ram": 0, "is_locked": False
+                    }
+                    await notify_masters(channel_id, {"type": "agent_updated", "agent": dev_info})
 
                 elif msg_type == "execute_script":
                     targets = data.get("targets") or data.get("target_id") or "all"
@@ -698,6 +950,9 @@ async def main():
     http_thread = threading.Thread(target=start_http_server, daemon=True)
     http_thread.start()
 
+    # Otomatis aktifkan Local Client Agent di PC ini sehingga langsung online
+    ensure_local_agent_running()
+
     ips = get_local_ips()
     print("=" * 65)
     print("      🚀 FYJ CHANNEL REMOTE - GATEWAY & WEB MASTER SERVER")
@@ -718,3 +973,9 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n[!] Server dimatikan.")
+    finally:
+        if local_agent_proc is not None:
+            try:
+                local_agent_proc.terminate()
+            except Exception:
+                pass

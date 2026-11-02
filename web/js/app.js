@@ -37,7 +37,13 @@ class FYJMasterApp {
     // Selection elements
     this.btnSelectAll = document.getElementById("btnSelectAll");
     this.btnDeselectAll = document.getElementById("btnDeselectAll");
+    this.btnConnectSelected = document.getElementById("btnConnectSelected");
+    this.btnDisconnectSelected = document.getElementById("btnDisconnectSelected");
     this.selectionCounterBadge = document.getElementById("selectionCounterBadge");
+
+    // Modal probe elements
+    this.btnProbeDeviceModal = document.getElementById("btnProbeDeviceModal");
+    this.probeResultBadge = document.getElementById("probeResultBadge");
 
     // Script elements
     this.quickScriptList = document.getElementById("quickScriptList");
@@ -291,7 +297,12 @@ class FYJMasterApp {
           </div>
         </div>
         <div class="card-header-actions">
-          ${isOffline ? '<span class="badge-offline-tag">OFFLINE</span>' : ''}
+          ${isOffline ? `
+            <span class="badge-offline-tag">OFFLINE</span>
+            <button class="btn-mini btn-card-connect" data-action="connect" data-id="${agent.id}" title="Hubungkan (Konek) ke Perangkat">🔌 Konek</button>
+          ` : `
+            <button class="btn-mini btn-card-disconnect" data-action="disconnect" data-id="${agent.id}" title="Putuskan (Diskonek) Koneksi">🔌 Diskonek</button>
+          `}
           <button class="btn-mini btn-edit-device" data-action="edit" data-id="${agent.id}" title="Edit Host Name, IP & MAC Address">✏️</button>
           <button class="btn-mini btn-delete-device" data-action="delete" data-id="${agent.id}" title="Hapus Perangkat Tidak Digunakan">🗑️</button>
         </div>
@@ -306,13 +317,16 @@ class FYJMasterApp {
         ${isOffline ? `
           <div class="offline-placeholder">
             <span class="offline-ico">📡</span>
-            <span class="offline-title">Menunggu Klien Aktif</span>
-            <span class="offline-hint">Jalankan <code>run_agent.bat</code> di PC ini</span>
-          </div>
-          <div class="screen-hover-overlay">
-            <button class="btn-card-control" data-action="edit" data-id="${agent.id}">
-              ⚙️ Pengaturan PC
-            </button>
+            <span class="offline-title">${agent.name} Belum Terhubung</span>
+            <span class="offline-hint">IP: <code>${agent.ip || "127.0.0.1"}</code></span>
+            <div class="offline-actions-btn-group">
+              <button class="btn-connect-now" data-action="connect" data-id="${agent.id}">
+                🔌 Hubungkan Sekarang
+              </button>
+              <button class="btn-card-control" data-action="edit" data-id="${agent.id}">
+                ⚙️ Pengaturan PC
+              </button>
+            </div>
           </div>
         ` : `
           <img id="thumb-${agent.id}" src="${thumbSrc}" alt="${agent.name}">
@@ -330,6 +344,7 @@ class FYJMasterApp {
           <div class="offline-footer-row">
             <span class="offline-notes-tag" title="${agent.notes || ''}">📍 ${agent.notes || "Lokasi belum diatur"}</span>
             <div class="card-btn-group">
+              <button class="btn-mini btn-card-connect" data-action="connect" data-id="${agent.id}" title="Hubungkan (Konek)">🔌 Konek</button>
               <button class="btn-mini" data-action="edit" data-id="${agent.id}" title="Edit Detail">⚙️</button>
               <button class="btn-mini btn-delete-device" data-action="delete" data-id="${agent.id}" title="Hapus Perangkat">🗑️</button>
             </div>
@@ -363,6 +378,7 @@ class FYJMasterApp {
             <div class="card-btn-group">
               <button class="btn-mini lock-toggle" data-action="toggle-lock" data-id="${agent.id}" title="Kunci / Buka Layar">🔒</button>
               <button class="btn-mini" data-action="msg" data-id="${agent.id}" title="Kirim Pesan">💬</button>
+              <button class="btn-mini btn-card-disconnect" data-action="disconnect" data-id="${agent.id}" title="Putuskan Koneksi (Diskonek)">🔌</button>
               <button class="btn-mini" data-action="power" data-id="${agent.id}" title="Opsi Daya">⚡</button>
               <button class="btn-mini" data-action="edit" data-id="${agent.id}" title="Edit Host Name & Jaringan">⚙️</button>
               <button class="btn-mini btn-delete-device" data-action="delete" data-id="${agent.id}" title="Hapus Perangkat">🗑️</button>
@@ -379,6 +395,20 @@ class FYJMasterApp {
         this.toggleSelectAgent(agent.id, e.target.checked);
       });
     }
+
+    // Tombol Konek (Header, Card screen placeholder, & Footer)
+    card.querySelectorAll('[data-action="connect"]').forEach(btn => {
+      btn.addEventListener("click", () => {
+        this.connectDevice(agent.id, agent.ip, agent.mac, agent.name);
+      });
+    });
+
+    // Tombol Diskonek (Header & Footer)
+    card.querySelectorAll('[data-action="disconnect"]').forEach(btn => {
+      btn.addEventListener("click", () => {
+        this.disconnectDevice(agent.id, agent.name);
+      });
+    });
 
     // Tombol Edit
     card.querySelectorAll('[data-action="edit"]').forEach(btn => {
@@ -613,6 +643,176 @@ class FYJMasterApp {
       this.selectedAgents.delete(agentId);
       this.updateSelectionUI();
       this.renderGrid();
+    });
+  }
+
+  // === SISTEM KONEKSI DAN PROBE PERANGKAT (CONNECT / DISCONNECT / PING) ===
+  connectDevice(agentId, ip, mac, name) {
+    const agName = name || (this.agents.get(agentId)?.name || agentId);
+    const targetIp = ip || (this.agents.get(agentId)?.ip || "");
+    const targetMac = mac || (this.agents.get(agentId)?.mac || "");
+
+    this.showToast(`Mencoba menghubungkan ke ${agName} (${targetIp || 'LAN'})...`, "info");
+
+    const payload = {
+      agent_id: agentId,
+      channel: this.currentChannel,
+      ip: targetIp,
+      mac: targetMac
+    };
+
+    // Kirim via WebSocket
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: "connect_device",
+        ...payload
+      }));
+    }
+
+    // Panggil REST API untuk probe & wake
+    fetch("/api/devices/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+      const isAlive = data.connected || (data.ping && data.ping.alive);
+      if (this.agents.has(agentId)) {
+        const ag = this.agents.get(agentId);
+        ag.status = isAlive ? "online" : "offline";
+      }
+      this.renderGrid();
+
+      if (isAlive) {
+        this.showToast(`✅ ${agName} berhasil terhubung! Status: ONLINE (${data.ping?.latency_ms || 1}ms)`, "success");
+      } else {
+        this.showToast(`⚠️ Sinyal bangun (Wake-on-LAN) dikirim ke ${agName}, namun host belum merespons ping.`, "warning");
+      }
+    })
+    .catch(err => {
+      console.warn("Connect request error:", err);
+    });
+  }
+
+  disconnectDevice(agentId, name) {
+    const agName = name || (this.agents.get(agentId)?.name || agentId);
+    if (!confirm(`Putuskan koneksi ke komputer "${agName}"?\nStatus akan berubah menjadi Offline.`)) {
+      return;
+    }
+
+    const payload = {
+      agent_id: agentId,
+      channel: this.currentChannel
+    };
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: "disconnect_device",
+        ...payload
+      }));
+    }
+
+    fetch("/api/devices/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(() => {
+      if (this.agents.has(agentId)) {
+        this.agents.get(agentId).status = "offline";
+      }
+      this.renderGrid();
+      this.showToast(`🔌 Koneksi ke ${agName} telah diputuskan. Status: Offline`, "info");
+    })
+    .catch(() => {
+      if (this.agents.has(agentId)) {
+        this.agents.get(agentId).status = "offline";
+      }
+      this.renderGrid();
+      this.showToast(`Koneksi ${agName} diputuskan secara lokal.`, "info");
+    });
+  }
+
+  connectSelectedDevices() {
+    const targets = this.getTargetAgentIds();
+    if (targets.length === 0) {
+      this.showToast("Tidak ada PC yang terdaftar untuk dihubungkan.", "warning");
+      return;
+    }
+    const count = this.selectedAgents.size > 0 ? this.selectedAgents.size : this.agents.size;
+    this.showToast(`Menghubungkan ke ${count} PC...`, "info");
+    targets.forEach(id => {
+      const ag = this.agents.get(id);
+      if (ag) {
+        this.connectDevice(ag.id, ag.ip, ag.mac, ag.name);
+      }
+    });
+  }
+
+  disconnectSelectedDevices() {
+    const targets = this.getTargetAgentIds();
+    if (targets.length === 0) {
+      this.showToast("Tidak ada PC aktif untuk diputuskan.", "warning");
+      return;
+    }
+    const count = this.selectedAgents.size > 0 ? this.selectedAgents.size : this.agents.size;
+    if (!confirm(`Yakin ingin memutuskan koneksi pada ${count} PC?`)) {
+      return;
+    }
+    targets.forEach(id => {
+      const ag = this.agents.get(id);
+      if (ag) {
+        const payload = { agent_id: ag.id, channel: this.currentChannel };
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: "disconnect_device", ...payload }));
+        }
+        fetch("/api/devices/disconnect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).catch(() => {});
+        ag.status = "offline";
+      }
+    });
+    this.renderGrid();
+    this.showToast(`Semua koneksi ${count} PC telah diputuskan.`, "info");
+  }
+
+  probeDeviceInModal() {
+    const ip = document.getElementById("editIp").value.trim();
+    const mac = document.getElementById("editMac").value.trim();
+    const badge = document.getElementById("probeResultBadge");
+    if (!badge) return;
+
+    if (!ip) {
+      badge.className = "probe-badge dead";
+      badge.textContent = "Alamat IP Kosong";
+      return;
+    }
+
+    badge.className = "probe-badge testing";
+    badge.textContent = "Menguji Ping...";
+
+    fetch("/api/devices/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip: ip, mac: mac })
+    })
+    .then(r => r.json())
+    .then(res => {
+      if (res.ping && res.ping.alive) {
+        badge.className = "probe-badge alive";
+        badge.textContent = `Online (${res.ping.latency_ms || 1}ms)`;
+      } else {
+        badge.className = "probe-badge dead";
+        badge.textContent = "Tidak Merespons (Offline)";
+      }
+    })
+    .catch(() => {
+      badge.className = "probe-badge dead";
+      badge.textContent = "Gagal Ping";
     });
   }
 
@@ -923,7 +1123,19 @@ class FYJMasterApp {
     document.getElementById("editIp").value = ag.ip || "127.0.0.1";
     document.getElementById("editMac").value = ag.mac || "00:00:00:00:00:00";
     document.getElementById("editNotes").value = ag.notes || "";
+
+    const badge = document.getElementById("probeResultBadge");
+    if (badge) {
+      badge.className = "probe-badge idle";
+      badge.textContent = "Belum Diuji";
+    }
+
     document.getElementById("modalEditDevice").classList.remove("hidden");
+
+    // Otomatis uji ping saat modal dibuka jika IP terisi
+    if (ag.ip && ag.ip !== "127.0.0.1") {
+      this.probeDeviceInModal();
+    }
   }
 
   openNewDeviceModal() {
@@ -933,6 +1145,13 @@ class FYJMasterApp {
     document.getElementById("editIp").value = "";
     document.getElementById("editMac").value = "";
     document.getElementById("editNotes").value = "";
+
+    const badge = document.getElementById("probeResultBadge");
+    if (badge) {
+      badge.className = "probe-badge idle";
+      badge.textContent = "Belum Diuji";
+    }
+
     document.getElementById("modalEditDevice").classList.remove("hidden");
   }
 
@@ -1035,6 +1254,17 @@ class FYJMasterApp {
     }
     if (this.btnDeselectAll) {
       this.btnDeselectAll.addEventListener("click", () => this.deselectAllAgents());
+    }
+    if (this.btnConnectSelected) {
+      this.btnConnectSelected.addEventListener("click", () => this.connectSelectedDevices());
+    }
+    if (this.btnDisconnectSelected) {
+      this.btnDisconnectSelected.addEventListener("click", () => this.disconnectSelectedDevices());
+    }
+
+    // Modal probe ping button
+    if (this.btnProbeDeviceModal) {
+      this.btnProbeDeviceModal.addEventListener("click", () => this.probeDeviceInModal());
     }
 
     // Dropdown Triggers
@@ -1200,7 +1430,7 @@ class FYJMasterApp {
       });
     }
 
-    // Simpan Perubahan Edit Device (Host Name, IP, MAC Address, Notes)
+    // Simpan Perubahan Edit Device (Host Name, IP, MAC Address, Notes) & Otomatis Cek Koneksi Langsung
     document.getElementById("btnSaveDeviceEdit").addEventListener("click", () => {
       let agentId = document.getElementById("editAgentId").value;
       const name = document.getElementById("editName").value.trim();
@@ -1215,7 +1445,14 @@ class FYJMasterApp {
       }
 
       if (!agentId) {
-        agentId = `dev_${Date.now() % 1000000}`;
+        const cleanMac = mac.replace(/[:-]/g, "");
+        agentId = cleanMac ? `pc_${cleanMac}` : `dev_${Date.now() % 1000000}`;
+      }
+
+      const saveBtn = document.getElementById("btnSaveDeviceEdit");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "⏳ Memeriksa Koneksi...";
       }
 
       const payload = {
@@ -1234,40 +1471,85 @@ class FYJMasterApp {
         this.ws.send(JSON.stringify(payload));
       }
 
-      // Simpan juga via REST API
+      // Simpan via REST API & tunggu hasil probe koneksi
       fetch("/api/devices/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
-      }).catch(() => {});
+      })
+      .then(r => r.json())
+      .then(data => {
+        const isAlive = (data.ping && data.ping.alive) || (data.device && data.device.status === "online");
+        const finalStatus = isAlive ? "online" : "offline";
 
-      // Update / Add in-memory dan UI
-      if (this.agents.has(agentId)) {
-        const ag = this.agents.get(agentId);
-        ag.name = name;
-        ag.hostname = hostname;
-        ag.ip = ip;
-        ag.mac = mac;
-        ag.notes = notes;
-      } else {
-        this.agents.set(agentId, {
-          id: agentId,
-          name: name,
-          hostname: hostname,
-          ip: ip || "127.0.0.1",
-          mac: mac || "00:00:00:00:00:00",
-          notes: notes,
-          status: "offline",
-          channel: this.currentChannel,
-          cpu: 0,
-          ram: 0,
-          is_locked: false
-        });
-      }
+        if (this.agents.has(agentId)) {
+          const ag = this.agents.get(agentId);
+          ag.name = name;
+          ag.hostname = hostname;
+          ag.ip = ip;
+          ag.mac = mac;
+          ag.notes = notes;
+          ag.status = finalStatus;
+        } else {
+          this.agents.set(agentId, {
+            id: agentId,
+            name: name,
+            hostname: hostname,
+            ip: ip || "127.0.0.1",
+            mac: mac || "00:00:00:00:00:00",
+            notes: notes,
+            status: finalStatus,
+            channel: this.currentChannel,
+            cpu: 0,
+            ram: 0,
+            is_locked: false
+          });
+        }
 
-      document.getElementById("modalEditDevice").classList.add("hidden");
-      this.renderGrid();
-      this.showToast(`Data perangkat [${name}] berhasil disimpan!`, "success");
+        document.getElementById("modalEditDevice").classList.add("hidden");
+        this.renderGrid();
+
+        if (isAlive) {
+          this.showToast(`✅ Data [${name}] disimpan! Host terdeteksi ONLINE (${data.ping?.latency_ms || 1}ms)`, "success");
+        } else {
+          this.showToast(`Data [${name}] disimpan. Host Offline / Standby.`, "info");
+        }
+      })
+      .catch(err => {
+        console.error("Save device error:", err);
+        // Fallback simpan secara lokal
+        if (this.agents.has(agentId)) {
+          const ag = this.agents.get(agentId);
+          ag.name = name;
+          ag.hostname = hostname;
+          ag.ip = ip;
+          ag.mac = mac;
+          ag.notes = notes;
+        } else {
+          this.agents.set(agentId, {
+            id: agentId,
+            name: name,
+            hostname: hostname,
+            ip: ip || "127.0.0.1",
+            mac: mac || "00:00:00:00:00:00",
+            notes: notes,
+            status: "offline",
+            channel: this.currentChannel,
+            cpu: 0,
+            ram: 0,
+            is_locked: false
+          });
+        }
+        document.getElementById("modalEditDevice").classList.add("hidden");
+        this.renderGrid();
+        this.showToast(`Data perangkat [${name}] berhasil disimpan.`, "success");
+      })
+      .finally(() => {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "🔌 Simpan & Konek Langsung";
+        }
+      });
     });
 
     document.getElementById("btnSaveNewChannel").addEventListener("click", () => {

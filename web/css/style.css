@@ -2008,6 +2008,177 @@ body {
   }
 }
 
+/* ==========================================================================
+   OFFICIAL LOGO & CONNECT / DISCONNECT INTERACTIVE BUTTONS
+   ========================================================================== */
+.brand-logo-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: contain;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+  transition: transform 0.2s ease;
+}
+
+.brand-logo-img:hover {
+  transform: scale(1.08) rotate(4deg);
+}
+
+.empty-state-logo {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  object-fit: contain;
+  margin-bottom: 16px;
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.45);
+}
+
+/* Connect & Disconnect Buttons */
+.btn-connect-global {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #34D399 !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+.btn-connect-global:hover {
+  background: #059669 !important;
+  color: #FFFFFF !important;
+}
+
+.btn-disconnect-global {
+  background: rgba(244, 63, 94, 0.15) !important;
+  color: #FB7185 !important;
+  border-color: rgba(244, 63, 94, 0.4) !important;
+}
+
+.btn-disconnect-global:hover {
+  background: #E11D48 !important;
+  color: #FFFFFF !important;
+}
+
+.btn-card-connect {
+  background: rgba(16, 185, 129, 0.2) !important;
+  color: #34D399 !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  font-weight: 700 !important;
+}
+
+.btn-card-connect:hover {
+  background: #059669 !important;
+  color: #FFFFFF !important;
+}
+
+.btn-card-disconnect {
+  background: rgba(244, 63, 94, 0.2) !important;
+  color: #FB7185 !important;
+  border-color: rgba(244, 63, 94, 0.4) !important;
+  font-weight: 700 !important;
+}
+
+.btn-card-disconnect:hover {
+  background: #E11D48 !important;
+  color: #FFFFFF !important;
+}
+
+.offline-actions-btn-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  z-index: 10;
+}
+
+.btn-connect-now {
+  background: #059669;
+  color: #FFFFFF;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.4);
+}
+
+.btn-connect-now:hover {
+  background: #047857;
+  transform: translateY(-1px);
+}
+
+/* Modal Live Connection Probe Card */
+.net-probe-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(14, 22, 38, 0.75);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-top: 10px;
+}
+
+.probe-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.probe-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.probe-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.probe-badge.idle {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94A3B8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.probe-badge.testing {
+  background: rgba(245, 158, 11, 0.2);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.probe-badge.alive {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.probe-badge.dead {
+  background: rgba(244, 63, 94, 0.2);
+  color: #FB7185;
+  border: 1px solid rgba(244, 63, 94, 0.4);
+}
+
+.btn-probe-action {
+  background: var(--bg-card);
+  color: var(--accent-cyan);
+  border: 1px solid var(--border-subtle);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-probe-action:hover {
+  background: var(--accent-blue);
+  color: #FFFFFF;
+  border-color: var(--accent-blue);
+}
+
+
 
 
 

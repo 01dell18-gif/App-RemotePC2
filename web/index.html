@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FYJ Channel Remote - Web Master Controller</title>
+  <link rel="icon" type="image/png" href="assets/logo.png">
   <link rel="stylesheet" href="css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,9 +16,7 @@
     <header class="navbar">
       <div class="nav-left">
         <div class="brand">
-          <div class="brand-logo">
-            <span class="logo-icon">⚡</span>
-          </div>
+          <img src="assets/logo.png" alt="FYJ Channel Logo" class="brand-logo-img">
           <div class="brand-text">
             <h1>FYJ CHANNEL REMOTE</h1>
             <span class="brand-sub">Cloud & Web Classroom Remote Master</span>
@@ -192,10 +191,12 @@
       <div class="filter-left">
         <button id="btnAddNewDevice" class="btn-primary-sm" title="Tambah Perangkat Komputer ke Ruangan">➕ Tambah PC</button>
         
-        <!-- SELECTION SYSTEM CONTROLS -->
+        <!-- SELECTION SYSTEM CONTROLS WITH CONNECT / DISCONNECT BUTTONS -->
         <div class="selection-box">
           <button id="btnSelectAll" class="btn-select" title="Pilih Semua PC di channel">✓ Pilih Semua</button>
           <button id="btnDeselectAll" class="btn-select" title="Batalkan Semua Pilihan">✕ Batal</button>
+          <button id="btnConnectSelected" class="btn-select btn-connect-global" title="Hubungkan (Konek) ke PC yang dipilih">🔌 Konek</button>
+          <button id="btnDisconnectSelected" class="btn-select btn-disconnect-global" title="Putuskan (Diskonek) PC yang dipilih">🔌 Diskonek</button>
           <span id="selectionCounterBadge" class="selection-badge">0 PC Dipilih</span>
         </div>
 
@@ -213,7 +214,7 @@
 
       <div class="channel-info-pill">
         <span class="channel-tag">Saluran Aktif: <strong id="lblActiveChannel">LAB-UTAMA</strong></span>
-        <span class="lan-ip-hint" id="lblLanInfo">Hubungkan Agent ke ws://&lt;IP-Server&gt;:8081</span>
+        <span class="lan-ip-hint" id="lblLanInfo">Hubungkan Klien ke ws://&lt;IP-Server&gt;:8081</span>
       </div>
     </div>
 
@@ -221,15 +222,15 @@
     <main class="grid-main">
       <!-- EMPTY STATE -->
       <div id="emptyState" class="empty-state">
-        <div class="empty-icon">📡</div>
+        <img src="assets/logo.png" alt="FYJ Channel Logo" class="empty-state-logo">
         <h2>Belum Ada Komputer yang Terhubung</h2>
-        <p>Jalankan <code>run_agent.bat</code> atau <code>run_agent_gui.bat</code> pada PC klien dengan Channel <strong id="lblEmptyChannel">LAB-UTAMA</strong>.</p>
+        <p>Klik tombol <strong>➕ Tambah PC</strong> di atas untuk mendaftarkan komputer siswa berdasarkan IP, atau jalankan <code>start_fyj_remote.bat</code> di komputer target.</p>
         <div class="guide-box">
-          <h4>Cara Cepat Menghubungkan Klien:</h4>
+          <h4>Cara Cepat Menghubungkan Perangkat:</h4>
           <ol>
-            <li>Buka folder <code>agent/</code> di komputer siswa / klien.</li>
-            <li>Klik ganda <code>run_agent_gui.bat</code>.</li>
-            <li>Masukkan Channel: <strong class="hl">LAB-UTAMA</strong> lalu klik <em>Hubungkan</em>.</li>
+            <li>Klik tombol <strong>➕ Tambah PC</strong> dan masukkan nama serta IP komputer target.</li>
+            <li>Klik tombol <strong>🔌 Simpan & Konek Langsung</strong> untuk auto-cek koneksi.</li>
+            <li>Jika perangkat target menyala di jaringan yang sama, layar komputer akan langsung tampil di grid!</li>
           </ol>
         </div>
       </div>
@@ -380,12 +381,23 @@
 
           <label>Lokasi / Catatan Meja:</label>
           <input type="text" id="editNotes" placeholder="Contoh: Baris Depan Meja 1">
+
+          <!-- LIVE CONNECTION PROBE BOX -->
+          <div class="net-probe-card">
+            <div class="probe-info-row">
+              <span class="probe-label">Cek Koneksi Jaringan:</span>
+              <span id="probeResultBadge" class="probe-badge idle">Belum Diuji</span>
+            </div>
+            <button type="button" id="btnProbeDeviceModal" class="btn-probe-action" title="Uji konektivitas ping ke alamat IP ini">
+              🔍 Tes Ping Sekarang
+            </button>
+          </div>
         </div>
         <div class="modal-footer modal-footer-split">
           <button id="btnDeleteDeviceModal" class="btn-danger-outline" title="Hapus komputer ini dari daftar inventaris">🗑️ Hapus Perangkat</button>
           <div class="modal-footer-right">
             <button class="btn-secondary" data-close="modalEditDevice">Batal</button>
-            <button id="btnSaveDeviceEdit" class="btn-primary">💾 Simpan Perubahan</button>
+            <button id="btnSaveDeviceEdit" class="btn-primary" title="Simpan data dan otomatis hubungkan perangkat ini">🔌 Simpan & Konek Langsung</button>
           </div>
         </div>
       </div>
