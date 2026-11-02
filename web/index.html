@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FYJ Channel Remote - Web Master Controller</title>
-  <link rel="icon" type="image/png" href="assets/logo.png">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/png" href="assets/logo.png?v=2.0.0">
+  <link rel="stylesheet" href="css/style.css?v=2.0.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
     <header class="navbar">
       <div class="nav-left">
         <div class="brand">
-          <img src="assets/logo.png" alt="FYJ Channel Logo" class="brand-logo-img">
+          <img src="assets/logo.png" alt="FYJ Channel Logo" class="brand-logo brand-logo-img" width="40" height="40" style="width: 40px !important; height: 40px !important; min-width: 40px !important; min-height: 40px !important; max-width: 40px !important; max-height: 40px !important; border-radius: 50% !important; object-fit: contain !important; display: block !important; flex-shrink: 0 !important;">
           <div class="brand-text">
             <h1>FYJ CHANNEL REMOTE</h1>
             <span class="brand-sub">Cloud & Web Classroom Remote Master</span>
@@ -222,7 +222,7 @@
     <main class="grid-main">
       <!-- EMPTY STATE -->
       <div id="emptyState" class="empty-state">
-        <img src="assets/logo.png" alt="FYJ Channel Logo" class="empty-state-logo">
+        <img src="assets/logo.png" alt="FYJ Channel Logo" class="empty-state-logo" width="76" height="76" style="width: 76px !important; height: 76px !important; max-width: 76px !important; max-height: 76px !important; border-radius: 50% !important; object-fit: contain !important; display: block !important;">
         <h2>Belum Ada Komputer yang Terhubung</h2>
         <p>Klik tombol <strong>➕ Tambah PC</strong> di atas untuk mendaftarkan komputer siswa berdasarkan IP, atau jalankan <code>start_fyj_remote.bat</code> di komputer target.</p>
         <div class="guide-box">
@@ -538,7 +538,7 @@
     <div id="toastContainer" class="toast-container"></div>
   </div>
 
-  <script src="js/remote.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/remote.js?v=2.0.0"></script>
+  <script src="js/app.js?v=2.0.0"></script>
 </body>
 </html>
