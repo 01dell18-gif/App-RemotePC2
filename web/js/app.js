@@ -1131,7 +1131,9 @@ class FYJMasterApp {
   openEditDeviceModal(agentId) {
     const ag = this.agents.get(agentId);
     if (!ag) return;
-    document.getElementById("editAgentId").value = agentId;
+    const inputAgentId = document.getElementById("editAgentId");
+    inputAgentId.value = agentId;
+    inputAgentId.dataset.oldId = agentId;
     document.getElementById("editName").value = ag.name || "";
     document.getElementById("editHostname").value = ag.hostname || ag.name || "";
     document.getElementById("editIp").value = ag.ip || "127.0.0.1";
@@ -1153,7 +1155,9 @@ class FYJMasterApp {
   }
 
   openNewDeviceModal() {
-    document.getElementById("editAgentId").value = "";
+    const inputAgentId = document.getElementById("editAgentId");
+    inputAgentId.value = "";
+    inputAgentId.dataset.oldId = "";
     document.getElementById("editName").value = "PC Baru";
     document.getElementById("editHostname").value = "";
     document.getElementById("editIp").value = "";
@@ -1446,7 +1450,8 @@ class FYJMasterApp {
 
     // Simpan Perubahan Edit Device (Host Name, IP, MAC Address, Notes) & Otomatis Cek Koneksi Langsung
     document.getElementById("btnSaveDeviceEdit").addEventListener("click", () => {
-      let agentId = document.getElementById("editAgentId").value;
+      const inputAgentId = document.getElementById("editAgentId");
+      const oldAgentId = inputAgentId.dataset.oldId || inputAgentId.value;
       const name = document.getElementById("editName").value.trim();
       const hostname = document.getElementById("editHostname").value.trim();
       const ip = document.getElementById("editIp").value.trim();
@@ -1458,10 +1463,9 @@ class FYJMasterApp {
         return;
       }
 
-      if (!agentId) {
-        const cleanMac = mac.replace(/[:-]/g, "");
-        agentId = cleanMac ? `pc_${cleanMac}` : `dev_${Date.now() % 1000000}`;
-      }
+      // Hitung ID kanonikal berdasarkan MAC Address atau IP Address
+      const cleanMac = mac.replace(/[:-]/g, "");
+      let canonicalId = (cleanMac && cleanMac !== "000000000000") ? `pc_${cleanMac}` : (ip && ip !== "127.0.0.1" ? `pc_${ip.replace(/\./g, '_')}` : (oldAgentId || `pc_${Date.now() % 1000000}`));
 
       const saveBtn = document.getElementById("btnSaveDeviceEdit");
       if (saveBtn) {
@@ -1471,7 +1475,8 @@ class FYJMasterApp {
 
       const payload = {
         type: "update_device",
-        agent_id: agentId,
+        agent_id: canonicalId,
+        old_agent_id: oldAgentId,
         name: name,
         hostname: hostname,
         ip: ip,
@@ -1493,32 +1498,29 @@ class FYJMasterApp {
       })
       .then(r => r.json())
       .then(data => {
+        const newId = data.agent_id || canonicalId;
+        const oldId = data.old_agent_id || oldAgentId;
+        if (oldId && oldId !== newId) {
+          this.agents.delete(oldId);
+          this.selectedAgents.delete(oldId);
+        }
+
         const isAlive = (data.ping && data.ping.alive) || (data.device && data.device.status === "online");
         const finalStatus = isAlive ? "online" : "offline";
 
-        if (this.agents.has(agentId)) {
-          const ag = this.agents.get(agentId);
-          ag.name = name;
-          ag.hostname = hostname;
-          ag.ip = ip;
-          ag.mac = mac;
-          ag.notes = notes;
-          ag.status = finalStatus;
-        } else {
-          this.agents.set(agentId, {
-            id: agentId,
-            name: name,
-            hostname: hostname,
-            ip: ip || "127.0.0.1",
-            mac: mac || "00:00:00:00:00:00",
-            notes: notes,
-            status: finalStatus,
-            channel: this.currentChannel,
-            cpu: 0,
-            ram: 0,
-            is_locked: false
-          });
-        }
+        this.agents.set(newId, {
+          id: newId,
+          name: name,
+          hostname: hostname,
+          ip: ip || "127.0.0.1",
+          mac: mac || "00:00:00:00:00:00",
+          notes: notes,
+          status: finalStatus,
+          channel: this.currentChannel,
+          cpu: 0,
+          ram: 0,
+          is_locked: false
+        });
 
         document.getElementById("modalEditDevice").classList.add("hidden");
         this.renderGrid();
@@ -1531,32 +1533,25 @@ class FYJMasterApp {
       })
       .catch(err => {
         console.error("Save device error:", err);
-        // Fallback simpan secara lokal
-        if (this.agents.has(agentId)) {
-          const ag = this.agents.get(agentId);
-          ag.name = name;
-          ag.hostname = hostname;
-          ag.ip = ip;
-          ag.mac = mac;
-          ag.notes = notes;
-        } else {
-          this.agents.set(agentId, {
-            id: agentId,
-            name: name,
-            hostname: hostname,
-            ip: ip || "127.0.0.1",
-            mac: mac || "00:00:00:00:00:00",
-            notes: notes,
-            status: "offline",
-            channel: this.currentChannel,
-            cpu: 0,
-            ram: 0,
-            is_locked: false
-          });
+        if (oldAgentId && oldAgentId !== canonicalId) {
+          this.agents.delete(oldAgentId);
         }
+        this.agents.set(canonicalId, {
+          id: canonicalId,
+          name: name,
+          hostname: hostname,
+          ip: ip || "127.0.0.1",
+          mac: mac || "00:00:00:00:00:00",
+          notes: notes,
+          status: "offline",
+          channel: this.currentChannel,
+          cpu: 0,
+          ram: 0,
+          is_locked: false
+        });
         document.getElementById("modalEditDevice").classList.add("hidden");
         this.renderGrid();
-        this.showToast(`Data perangkat [${name}] berhasil disimpan.`, "success");
+        this.showToast(`Data [${name}] disimpan secara lokal.`, "info");
       })
       .finally(() => {
         if (saveBtn) {

@@ -86,51 +86,67 @@ class ChannelManager:
         return self.channels[channel_id]
 
     def get_channel_devices(self, channel_id: str):
-        """Menggabungkan active online agents dengan registered offline devices tanpa duplikasi."""
+        """
+        Menampilkan daftar perangkat SESUAI DENGAN DATA YANG DI-INPUT DI 'Data Perangkat & Jaringan' (devices_db).
+        Setiap perangkat yang terdaftar strictly dikoneksikan ke datanya sendiri (IP & MAC).
+        """
         ch = self.get_or_create_channel(channel_id)
-        active_ids = set()
-        active_macs = set()
-        active_ips = set()
         result = []
 
-        # 1. Masukkan semua active online agents
-        for a_id, a in ch["agents"].items():
-            info = dict(a["info"])
-            info["status"] = "online"
-            result.append(info)
-            active_ids.add(a_id)
-            if info.get("mac") and info["mac"] != "00:00:00:00:00:00":
-                active_macs.add(info["mac"].upper())
-            if info.get("ip") and info["ip"] not in ("127.0.0.1", "unknown"):
-                active_ips.add(info["ip"])
-
-        # 2. Masukkan saved devices dari devices_db yang berada di channel ini tapi sedang offline
+        # devices_db adalah sumber kebenaran tunggal (Source of Truth)
         for dev_id, dev_data in devices_db.items():
             dev_channel = dev_data.get("channel", "LAB-UTAMA")
-            if dev_channel == channel_id:
-                dev_mac = (dev_data.get("mac") or "").upper()
-                dev_ip = dev_data.get("ip") or ""
-                # Hindari duplikasi jika versi online-nya sudah terdeteksi
-                if dev_id not in active_ids and dev_mac not in active_macs and dev_ip not in active_ips:
-                    result.append({
-                        "id": dev_id,
-                        "name": dev_data.get("name", "Komputer"),
-                        "hostname": dev_data.get("hostname", ""),
-                        "ip": dev_ip or "127.0.0.1",
-                        "mac": dev_mac or "00:00:00:00:00:00",
-                        "notes": dev_data.get("notes", ""),
-                        "status": "offline",
-                        "channel": channel_id,
-                        "resolution": "1920x1080",
-                        "mode": "thumbnail",
-                        "is_locked": False,
-                        "cpu": 0,
-                        "ram": 0,
-                        "active_window": "",
-                        "connected_at": 0,
-                        "last_seen": 0,
-                        "os": "Windows"
-                    })
+            if dev_channel != channel_id:
+                continue
+
+            dev_mac = (dev_data.get("mac") or "").upper()
+            dev_ip = dev_data.get("ip") or ""
+            dev_name = dev_data.get("name", "Komputer")
+            dev_host = dev_data.get("hostname", "")
+
+            # Cek apakah ada agent WebSocket aktif yang strictly cocok dengan device ini
+            active_agent = None
+            if dev_id in ch["agents"]:
+                active_agent = ch["agents"][dev_id]
+            else:
+                for a_id, a in ch["agents"].items():
+                    a_info = a["info"]
+                    if a_info.get("id") == dev_id:
+                        active_agent = a
+                        break
+
+            if active_agent:
+                info = dict(active_agent["info"])
+                info["id"] = dev_id
+                info["name"] = dev_name
+                info["hostname"] = dev_host or info.get("hostname", "")
+                info["ip"] = dev_ip or info.get("ip", "127.0.0.1")
+                info["mac"] = dev_mac or info.get("mac", "00:00:00:00:00:00")
+                info["notes"] = dev_data.get("notes", "")
+                info["status"] = "online"
+                info["channel"] = channel_id
+                result.append(info)
+            else:
+                saved_status = dev_data.get("status", "offline")
+                result.append({
+                    "id": dev_id,
+                    "name": dev_name,
+                    "hostname": dev_host,
+                    "ip": dev_ip or "127.0.0.1",
+                    "mac": dev_mac or "00:00:00:00:00:00",
+                    "notes": dev_data.get("notes", ""),
+                    "status": saved_status,
+                    "channel": channel_id,
+                    "resolution": "1920x1080",
+                    "mode": "thumbnail",
+                    "is_locked": False,
+                    "cpu": 0,
+                    "ram": 0,
+                    "active_window": "",
+                    "connected_at": 0,
+                    "last_seen": 0,
+                    "os": "Windows"
+                })
         return result
 
     def get_all_channels_summary(self):
@@ -148,6 +164,47 @@ class ChannelManager:
 
 channel_mgr = ChannelManager()
 main_event_loop = None
+
+def normalize_mac(mac: str) -> str:
+    if not mac:
+        return ""
+    return mac.replace(":", "").replace("-", "").strip().upper()
+
+def find_matching_device_id(agent_ip: str, agent_mac: str, agent_hostname: str) -> Optional[str]:
+    """
+    Kecocokan ketat (Strict Identity Match) antara connecting agent dengan entri di devices_db.
+    Hanya mengembalikan device_id jika:
+    1. MAC address sama persis (setelah dinormalisasi)
+    2. ATAU IP address sama persis (dan bukan loopback 127.0.0.1)
+    3. ATAU Hostname sama persis DAN IP address sama
+    Jika tidak cocok dengan perangkat manapun di devices_db, return None.
+    Mencegah perangkat lain atau PC lokal membajak data kartu perangkat lab!
+    """
+    clean_agent_mac = normalize_mac(agent_mac)
+    agent_ip = (agent_ip or "").strip()
+    agent_host = (agent_hostname or "").strip().lower()
+
+    for dev_id, dev in devices_db.items():
+        dev_mac = normalize_mac(dev.get("mac", ""))
+        dev_ip = (dev.get("ip") or "").strip()
+        dev_host = (dev.get("hostname") or "").strip().lower()
+
+        # 1. Kecocokan MAC address (prioritas utama dan paling akurat)
+        if clean_agent_mac and clean_agent_mac != "000000000000" and dev_mac and dev_mac != "000000000000":
+            if clean_agent_mac == dev_mac:
+                return dev_id
+
+        # 2. Kecocokan IP address (bukan loopback)
+        if agent_ip and dev_ip and not agent_ip.startswith("127.") and not dev_ip.startswith("127."):
+            if agent_ip == dev_ip:
+                return dev_id
+
+        # 3. Kecocokan Hostname (hanya jika IP sama)
+        if dev_host and agent_host and dev_host == agent_host:
+            if agent_ip and dev_ip and agent_ip == dev_ip:
+                return dev_id
+
+    return None
 
 def get_local_ips():
     ips = []
@@ -249,9 +306,28 @@ def send_wake_on_lan(mac: str) -> bool:
 local_agent_proc = None
 
 def ensure_local_agent_running():
+    """
+    HANYA menjalankan local agent jika komputer server ini terdaftar secara eksplisit
+    di devices_db (berdasarkan IP LAN lokal atau MAC address fisik komputer ini).
+    Jika TIDAK terdaftar di devices_db, komputer server HANYA bertindak sebagai Web Master Controller
+    dan TIDAK AKAN menyiarkan layar master ke dashboard!
+    """
     global local_agent_proc
     if local_agent_proc is not None and local_agent_proc.poll() is None:
         return
+
+    # Cek apakah IP LAN lokal komputer ini terdaftar di devices_db
+    local_ips = get_local_ips()
+    is_registered = False
+    for dev in devices_db.values():
+        dev_ip = (dev.get("ip") or "").strip()
+        if dev_ip in local_ips and not dev_ip.startswith("127."):
+            is_registered = True
+            break
+
+    if not is_registered:
+        return  # Jangan aktifkan local agent jika tidak terdaftar di Data Perangkat!
+
     agent_path = os.path.abspath(os.path.join(BASE_DIR, "..", "agent", "fyj_agent.py"))
     if os.path.exists(agent_path):
         try:
@@ -263,9 +339,9 @@ def ensure_local_agent_running():
                 cwd=os.path.dirname(agent_path),
                 **kwargs
             )
-            print("[+] Local Agent background service otomatis aktif untuk PC ini!")
+            print("[+] Local Agent background service aktif untuk PC lokal ini.")
         except Exception as e:
-            print(f"[!] Gagal memulai local agent otomatis: {e}")
+            print(f"[!] Gagal memulai local agent: {e}")
 
 # --- HTTP Server untuk Web Master UI & REST API ---
 class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -350,8 +426,6 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             if mac:
                 send_wake_on_lan(mac)
             ping_res = check_host_ping(ip)
-            if ping_res.get("is_local"):
-                ensure_local_agent_running()
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -374,13 +448,11 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             if mac:
                 send_wake_on_lan(mac)
             ping_res = check_host_ping(ip)
-
-            if ping_res.get("is_local"):
-                ensure_local_agent_running()
+            is_alive = ping_res.get("alive", False)
 
             # Perbarui status di devices_db
             if agent_id in devices_db:
-                devices_db[agent_id]["status"] = "online" if ping_res.get("alive") else "offline"
+                devices_db[agent_id]["status"] = "online" if is_alive else "offline"
                 save_devices_db(devices_db)
 
             # Beritahu semua master
@@ -391,7 +463,7 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "ip": ip or "127.0.0.1",
                 "mac": mac or "00:00:00:00:00:00",
                 "notes": devices_db.get(agent_id, {}).get("notes", ""),
-                "status": "online" if ping_res.get("alive") else "offline",
+                "status": "online" if is_alive else "offline",
                 "channel": channel_name,
                 "cpu": 0, "ram": 0, "is_locked": False
             }
@@ -407,7 +479,7 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({
                 "success": True,
-                "connected": ping_res.get("alive", False),
+                "connected": is_alive,
                 "ping": ping_res,
                 "device": dev_info
             }).encode("utf-8"))
@@ -455,38 +527,59 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         elif parsed.path == "/api/devices/update":
             agent_id = payload.get("agent_id")
-            if not agent_id:
-                agent_id = f"dev_{int(time.time()*1000)%1000000}"
-            
-            channel_name = payload.get("channel", "LAB-UTAMA")
-            if agent_id not in devices_db:
-                devices_db[agent_id] = {"channel": channel_name}
-            
-            for k in ["name", "hostname", "ip", "mac", "notes", "channel"]:
-                if k in payload:
-                    devices_db[agent_id][k] = payload[k]
-            save_devices_db(devices_db)
+            old_agent_id = payload.get("old_agent_id") or agent_id
+            name = payload.get("name", "Komputer").strip()
+            hostname = payload.get("hostname", "").strip()
+            ip = payload.get("ip", "").strip()
+            mac = payload.get("mac", "").strip().upper()
+            notes = payload.get("notes", "").strip()
+            channel_name = payload.get("channel", "LAB-UTAMA").strip().upper()
 
-            dev_ip = payload.get("ip") or devices_db[agent_id].get("ip", "")
-            dev_mac = payload.get("mac") or devices_db[agent_id].get("mac", "")
-            
-            # Cek koneksi secara otomatis seketika data disimpan
-            if dev_mac:
-                send_wake_on_lan(dev_mac)
-            ping_res = check_host_ping(dev_ip)
-            if ping_res.get("is_local"):
-                ensure_local_agent_running()
+            clean_mac = normalize_mac(mac)
+            if clean_mac and clean_mac != "000000000000":
+                canonical_id = f"pc_{clean_mac}"
+            elif ip and not ip.startswith("127."):
+                canonical_id = f"pc_{ip.replace('.', '_')}"
+            elif hostname:
+                canonical_id = f"pc_{hostname.replace(' ', '_')}"
+            else:
+                canonical_id = agent_id or f"dev_{int(time.time()*1000)%1000000}"
 
+            # Hapus entry lama dari devices_db jika ID berubah
+            if old_agent_id and old_agent_id != canonical_id and old_agent_id in devices_db:
+                del devices_db[old_agent_id]
+                if main_event_loop and not main_event_loop.is_closed():
+                    asyncio.run_coroutine_threadsafe(
+                        notify_masters(channel_name, {"type": "device_deleted", "agent_id": old_agent_id}),
+                        main_event_loop
+                    )
+
+            if mac:
+                send_wake_on_lan(mac)
+            ping_res = check_host_ping(ip)
             is_alive = ping_res.get("alive", False)
 
-            # Update active agent jika online
+            devices_db[canonical_id] = {
+                "name": name,
+                "hostname": hostname,
+                "ip": ip,
+                "mac": mac,
+                "notes": notes,
+                "channel": channel_name,
+                "status": "online" if is_alive else "offline"
+            }
+            save_devices_db(devices_db)
+
+            # Update active agent jika ada yang cocok
             matched = False
             for ch in channel_mgr.channels.values():
-                if agent_id in ch["agents"]:
-                    ag = ch["agents"][agent_id]["info"]
-                    for k in ["name", "hostname", "ip", "mac", "notes"]:
-                        if k in payload:
-                            ag[k] = payload[k]
+                if canonical_id in ch["agents"]:
+                    ag = ch["agents"][canonical_id]["info"]
+                    ag["name"] = name
+                    ag["hostname"] = hostname
+                    ag["ip"] = ip
+                    ag["mac"] = mac
+                    ag["notes"] = notes
                     ag["status"] = "online"
                     matched = True
                     if main_event_loop and not main_event_loop.is_closed():
@@ -495,24 +588,26 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             main_event_loop
                         )
 
-            if not matched:
-                auto_status = "online" if is_alive else "offline"
-                offline_info = {
-                    "id": agent_id,
-                    "name": devices_db[agent_id].get("name", "Komputer"),
-                    "hostname": devices_db[agent_id].get("hostname", ""),
-                    "ip": devices_db[agent_id].get("ip", "127.0.0.1"),
-                    "mac": devices_db[agent_id].get("mac", "00:00:00:00:00:00"),
-                    "notes": devices_db[agent_id].get("notes", ""),
-                    "status": auto_status,
-                    "channel": channel_name,
-                    "cpu": 0, "ram": 0, "is_locked": False
-                }
-                if main_event_loop and not main_event_loop.is_closed():
-                    asyncio.run_coroutine_threadsafe(
-                        notify_masters(channel_name, {"type": "agent_updated", "agent": offline_info}),
-                        main_event_loop
-                    )
+            dev_info = {
+                "id": canonical_id,
+                "name": name,
+                "hostname": hostname,
+                "ip": ip or "127.0.0.1",
+                "mac": mac or "00:00:00:00:00:00",
+                "notes": notes,
+                "status": "online" if is_alive else "offline",
+                "channel": channel_name,
+                "resolution": "1920x1080",
+                "mode": "thumbnail",
+                "is_locked": False,
+                "cpu": 0, "ram": 0
+            }
+
+            if not matched and main_event_loop and not main_event_loop.is_closed():
+                asyncio.run_coroutine_threadsafe(
+                    notify_masters(channel_name, {"type": "agent_updated", "agent": dev_info}),
+                    main_event_loop
+                )
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -520,8 +615,9 @@ class FYJHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({
                 "success": True,
-                "agent_id": agent_id,
-                "device": devices_db[agent_id],
+                "agent_id": canonical_id,
+                "old_agent_id": old_agent_id,
+                "device": dev_info,
                 "ping": ping_res,
                 "auto_connected": is_alive
             }).encode("utf-8"))
@@ -666,38 +762,72 @@ async def ws_handler(websocket):
                         }))
 
                 elif msg_type == "update_device":
-                    agent_id = data.get("agent_id") or f"dev_{int(time.time()*1000)%1000000}"
-                    if agent_id not in devices_db:
-                        devices_db[agent_id] = {"channel": channel_id}
-                    
-                    fields = ["name", "hostname", "ip", "mac", "notes", "channel"]
-                    for f in fields:
-                        if f in data:
-                            devices_db[agent_id][f] = data[f]
+                    agent_id = data.get("agent_id")
+                    old_agent_id = data.get("old_agent_id") or agent_id
+                    name = data.get("name", "Komputer").strip()
+                    hostname = data.get("hostname", "").strip()
+                    ip = data.get("ip", "").strip()
+                    mac = data.get("mac", "").strip().upper()
+                    notes = data.get("notes", "").strip()
+
+                    clean_mac = normalize_mac(mac)
+                    if clean_mac and clean_mac != "000000000000":
+                        canonical_id = f"pc_{clean_mac}"
+                    elif ip and not ip.startswith("127."):
+                        canonical_id = f"pc_{ip.replace('.', '_')}"
+                    elif hostname:
+                        canonical_id = f"pc_{hostname.replace(' ', '_')}"
+                    else:
+                        canonical_id = agent_id or f"dev_{int(time.time()*1000)%1000000}"
+
+                    if old_agent_id and old_agent_id != canonical_id and old_agent_id in devices_db:
+                        del devices_db[old_agent_id]
+                        await notify_masters(channel_id, {"type": "device_deleted", "agent_id": old_agent_id})
+
+                    if mac:
+                        send_wake_on_lan(mac)
+                    ping_res = check_host_ping(ip)
+                    is_alive = ping_res.get("alive", False)
+
+                    devices_db[canonical_id] = {
+                        "name": name,
+                        "hostname": hostname,
+                        "ip": ip,
+                        "mac": mac,
+                        "notes": notes,
+                        "channel": channel_id,
+                        "status": "online" if is_alive else "offline"
+                    }
                     save_devices_db(devices_db)
 
                     # Update active agent jika online
                     matched = False
                     for target_ch in channel_mgr.channels.values():
-                        if agent_id in target_ch["agents"]:
-                            ag = target_ch["agents"][agent_id]["info"]
-                            for f in fields:
-                                if f in data:
-                                    ag[f] = data[f]
+                        if canonical_id in target_ch["agents"]:
+                            ag = target_ch["agents"][canonical_id]["info"]
+                            ag["name"] = name
+                            ag["hostname"] = hostname
+                            ag["ip"] = ip
+                            ag["mac"] = mac
+                            ag["notes"] = notes
+                            ag["status"] = "online"
                             matched = True
                             await notify_masters(ag["channel"], {"type": "agent_updated", "agent": ag})
 
                     if not matched:
                         offline_info = {
-                            "id": agent_id,
-                            "name": devices_db[agent_id].get("name", "Komputer"),
-                            "hostname": devices_db[agent_id].get("hostname", ""),
-                            "ip": devices_db[agent_id].get("ip", "127.0.0.1"),
-                            "mac": devices_db[agent_id].get("mac", "00:00:00:00:00:00"),
-                            "notes": devices_db[agent_id].get("notes", ""),
-                            "status": "offline",
+                            "id": canonical_id,
+                            "name": name,
+                            "hostname": hostname,
+                            "ip": ip or "127.0.0.1",
+                            "mac": mac or "00:00:00:00:00:00",
+                            "notes": notes,
+                            "status": "online" if is_alive else "offline",
                             "channel": channel_id,
-                            "cpu": 0, "ram": 0, "is_locked": False
+                            "resolution": "1920x1080",
+                            "mode": "thumbnail",
+                            "is_locked": False,
+                            "cpu": 0, "ram": 0
                         }
                         await notify_masters(channel_id, {"type": "agent_updated", "agent": offline_info})
 
@@ -725,10 +855,9 @@ async def ws_handler(websocket):
                     if target_mac:
                         send_wake_on_lan(target_mac)
                     ping_res = check_host_ping(target_ip)
-                    if ping_res.get("is_local"):
-                        ensure_local_agent_running()
+                    is_alive = ping_res.get("alive", False)
 
-                    new_status = "online" if ping_res.get("alive") else "offline"
+                    new_status = "online" if is_alive else "offline"
                     if agent_id in devices_db:
                         devices_db[agent_id]["status"] = new_status
                         save_devices_db(devices_db)
@@ -858,12 +987,12 @@ async def ws_handler(websocket):
             print(f"[-] Master terputus dari Channel: {channel_id}")
 
     elif role == "agent":
-        agent_id = params.get("id", [f"pc_{int(time.time()*1000)%100000}"])[0]
+        raw_agent_id = params.get("id", [""])[0]
         agent_name = params.get("name", ["Komputer Klien"])[0]
         detected_ip = websocket.remote_address[0] if websocket.remote_address else "127.0.0.1"
 
         agent_info = {
-            "id": agent_id,
+            "id": raw_agent_id or f"pc_{int(time.time()*1000)%100000}",
             "name": agent_name,
             "hostname": agent_name,
             "channel": channel_id,
@@ -881,19 +1010,7 @@ async def ws_handler(websocket):
             "last_seen": time.time()
         }
 
-        if agent_id in devices_db:
-            saved = devices_db[agent_id]
-            for f in ["name", "hostname", "ip", "mac", "notes"]:
-                if f in saved and saved[f]:
-                    agent_info[f] = saved[f]
-
-        ch["agents"][agent_id] = {"ws": websocket, "info": agent_info}
-        print(f"[+] Agent '{agent_info['name']}' ({agent_id}) bergabung ke Channel: {channel_id}")
-
-        await notify_masters(channel_id, {
-            "type": "agent_joined",
-            "agent": agent_info
-        })
+        active_dev_id = None
 
         try:
             async for raw_msg in websocket:
@@ -902,46 +1019,47 @@ async def ws_handler(websocket):
 
                 if msg_type == "agent_hello":
                     reported_info = data.get("info", {})
-                    for k in ["hostname", "mac", "os", "resolution"]:
+                    reported_hostname = reported_info.get("hostname", "")
+                    reported_ip = reported_info.get("ip", detected_ip)
+                    reported_mac = reported_info.get("mac", "")
+
+                    for k in ["os", "resolution", "mode"]:
                         if k in reported_info:
                             agent_info[k] = reported_info[k]
 
-                    if "ip" in reported_info and agent_info.get("ip") in ["127.0.0.1", "unknown"]:
-                        agent_info["ip"] = reported_info["ip"]
+                    # Pencocokan ketat dengan perangkat di Data Perangkat & Jaringan
+                    matched_id = find_matching_device_id(reported_ip, reported_mac, reported_hostname)
+                    if matched_id:
+                        active_dev_id = matched_id
+                        saved_dev = devices_db[matched_id]
+                        agent_info["id"] = matched_id
+                        agent_info["name"] = saved_dev.get("name", agent_name)
+                        agent_info["hostname"] = saved_dev.get("hostname", reported_hostname)
+                        agent_info["ip"] = saved_dev.get("ip", reported_ip)
+                        agent_info["mac"] = saved_dev.get("mac", reported_mac)
+                        agent_info["notes"] = saved_dev.get("notes", "")
+                        agent_info["status"] = "online"
+                        agent_info["last_seen"] = time.time()
 
-                    mac_key = agent_info.get("mac")
-                    matched_db_id = None
-                    if mac_key:
-                        for db_id, db_entry in devices_db.items():
-                            if db_entry.get("mac") == mac_key or db_entry.get("hostname") == agent_info.get("hostname"):
-                                matched_db_id = db_id
-                                for f in ["name", "hostname", "ip", "notes"]:
-                                    if f in db_entry and db_entry[f]:
-                                        agent_info[f] = db_entry[f]
-                                break
+                        devices_db[matched_id]["status"] = "online"
+                        save_devices_db(devices_db)
 
-                    target_store_id = matched_db_id or agent_id
-                    devices_db[target_store_id] = {
-                        "name": agent_info["name"],
-                        "hostname": agent_info.get("hostname", agent_info["name"]),
-                        "ip": agent_info["ip"],
-                        "mac": agent_info.get("mac", "00:00:00:00:00:00"),
-                        "notes": agent_info.get("notes", ""),
-                        "channel": channel_id
-                    }
-                    save_devices_db(devices_db)
-
-                    agent_info["last_seen"] = time.time()
-                    await notify_masters(channel_id, {
-                        "type": "agent_updated",
-                        "agent": agent_info
-                    })
+                        ch["agents"][matched_id] = {"ws": websocket, "info": agent_info}
+                        print(f"[+] Agent TERVERIFIKASI cocok dengan: '{agent_info['name']}' ({matched_id}) IP: {agent_info['ip']}")
+                        await notify_masters(channel_id, {
+                            "type": "agent_updated",
+                            "agent": agent_info
+                        })
+                    else:
+                        print(f"[!] PERINGATAN: Agent dari IP {reported_ip} (Host: {reported_hostname}, MAC: {reported_mac}) TIDAK TERDAFTAR di Data Perangkat & Jaringan. Siaran layar ditolak.")
 
                 elif msg_type == "screen_frame":
+                    if not active_dev_id:
+                        continue  # Hanya siarkan jika agent terdaftar dan cocok secara ketat
                     agent_info["last_seen"] = time.time()
                     frame_data = {
                         "type": "screen_frame",
-                        "agent_id": agent_id,
+                        "agent_id": active_dev_id,
                         "frame": data.get("frame"),
                         "mode": data.get("mode", "thumbnail"),
                         "timestamp": data.get("timestamp", time.time())
@@ -949,6 +1067,8 @@ async def ws_handler(websocket):
                     await notify_masters(channel_id, frame_data)
 
                 elif msg_type == "agent_stats":
+                    if not active_dev_id:
+                        continue
                     agent_info["cpu"] = data.get("cpu", 0)
                     agent_info["ram"] = data.get("ram", 0)
                     agent_info["active_window"] = data.get("active_window", "")
@@ -956,7 +1076,7 @@ async def ws_handler(websocket):
                     agent_info["last_seen"] = time.time()
                     await notify_masters(channel_id, {
                         "type": "agent_stats",
-                        "agent_id": agent_id,
+                        "agent_id": active_dev_id,
                         "stats": {
                             "cpu": agent_info["cpu"],
                             "ram": agent_info["ram"],
@@ -966,10 +1086,11 @@ async def ws_handler(websocket):
                     })
 
                 elif msg_type == "script_result":
-                    # Meneruskan hasil eksekusi terminal skrip ke master
+                    if not active_dev_id:
+                        continue
                     await notify_masters(channel_id, {
                         "type": "script_result",
-                        "agent_id": agent_id,
+                        "agent_id": active_dev_id,
                         "agent_name": agent_info["name"],
                         "script_name": data.get("script_name", ""),
                         "success": data.get("success", True),
@@ -979,14 +1100,18 @@ async def ws_handler(websocket):
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
-            if agent_id in ch["agents"]:
-                del ch["agents"][agent_id]
-            print(f"[-] Agent '{agent_info['name']}' ({agent_id}) keluar dari Channel: {channel_id}")
-            agent_info["status"] = "offline"
-            await notify_masters(channel_id, {
-                "type": "agent_updated",
-                "agent": agent_info
-            })
+            if active_dev_id:
+                if active_dev_id in ch["agents"]:
+                    del ch["agents"][active_dev_id]
+                if active_dev_id in devices_db:
+                    devices_db[active_dev_id]["status"] = "offline"
+                    save_devices_db(devices_db)
+                agent_info["status"] = "offline"
+                await notify_masters(channel_id, {
+                    "type": "agent_updated",
+                    "agent": agent_info
+                })
+                print(f"[-] Agent '{agent_info['name']}' ({active_dev_id}) terputus dari Channel: {channel_id}")
 
     else:
         await websocket.close(1008, "Role parameter missing (role=master or role=agent)")
@@ -1046,9 +1171,6 @@ async def main():
 
     # Aktifkan UDP Beacon Service untuk auto-discovery klien LAN
     start_udp_beacon_service()
-
-    # Otomatis aktifkan Local Client Agent di PC ini sehingga langsung online
-    ensure_local_agent_running()
 
     ips = get_local_ips()
     print("=" * 65)

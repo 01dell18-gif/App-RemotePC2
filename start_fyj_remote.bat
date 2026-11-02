@@ -90,21 +90,14 @@ if !errorlevel! neq 0 (
 )
 
 REM -------------------------------------------------------------------------
-REM 3. MEMBUKA BROWSER KE DASHBOARD
+REM 3. MENJALANKAN FYJ REMOTE SMART LAUNCHER (AUTO DETECT MASTER / AGENT)
 REM -------------------------------------------------------------------------
 echo.
-echo [*] Membuka FYJ Channel Remote di browser default...
-start "" http://localhost:8080
-
-REM -------------------------------------------------------------------------
-REM 4. MENJALANKAN SERVER SECARA LANGSUNG (TETAP AKTIF & MENAMPILKAN LOG)
-REM -------------------------------------------------------------------------
-echo.
-echo [*] Memulai Server Gateway dan WebSocket Relay...
+echo [*] Memulai FYJ Channel Remote...
 echo ------------------------------------------------------------------------
-"%PYTHON_EXE%" -u server\server.py
+"%PYTHON_EXE%" -u launcher.py %*
 
-REM Jika server berhenti karena ditutup atau error
+REM Jika program berhenti
 echo.
-echo [!] Server telah dinonaktifkan.
+echo [!] Program telah dinonaktifkan.
 pause
