@@ -472,6 +472,9 @@ class FYJMasterApp {
     const thumbImg = document.getElementById(`thumb-${agentId}`);
     if (thumbImg) {
       thumbImg.src = `data:image/jpeg;base64,${base64Frame}`;
+    } else {
+      // Jika kartu sebelumnya berada dalam mode placeholder, render ulang grid agar elemen gambar dibuat seketika
+      this.renderGrid();
     }
   }
 
